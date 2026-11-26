@@ -131,10 +131,19 @@ function next(row){
   }
   return n;
 }
-function reset(){
-  rows = [seedRow($('seed').value)];
-  playhead = 0; draw();
+let seed = null; // 현재 씨앗 줄 (공유 URL에 담김)
+function reset(kindOrRow){
+  seed = kindOrRow instanceof Uint8Array ? kindOrRow : seedRow($('seed').value);
+  rows = [seed.slice()]; pending = [];
+  playhead = 0; updateHash(); draw();
 }
+const seedHex = r => { let v=0; for(let i=0;i<COLS;i++) v = (v<<1)|r[i]; return v.toString(16).padStart(4,'0'); };
+function hexSeed(h){
+  const v = parseInt(h,16); if(!Number.isFinite(v)) return null;
+  const r = new Uint8Array(COLS); for(let i=0;i<COLS;i++) r[i] = (v >> (COLS-1-i)) & 1;
+  return r.some(x=>x) ? r : null;
+}
+function updateHash(){ try{ history.replaceState(null,'','#'+rule+(seed?'-'+seedHex(seed):'')); }catch(e){} }
 
 /* ---------- 그리기 ---------- */
 function resize(){
@@ -200,11 +209,11 @@ function pluck(f, t, vol){
   o.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
   o.start(t); o2.start(t); o.stop(t+1.2); o2.stop(t+1.2);
 }
-function sound(row){
+function sound(row, at){
   if(!ac) return;
   const on = []; for(let i=0;i<COLS;i++) if(row[i]) on.push(i);
   if(!on.length) return;
-  const vol = .22/Math.sqrt(on.length), t = ac.currentTime+.01;
+  const vol = .22/Math.sqrt(on.length), t = at ?? ac.currentTime+.01;
   on.forEach((c,k)=>pluck(freqFor(c), t + k*0.004, vol)); // 살짝 흩뿌려 오르골 느낌
 }
 
@@ -216,12 +225,40 @@ function stepOnce(){
   draw();
 }
 function interval(){ return 60000/(+$('tempo').value); }
-function tick(){ stepOnce(); timer = setTimeout(tick, interval()); }
+/* 룩어헤드 스케줄러: 소리는 AudioContext 시계로 미리 예약하고, 화면은 그 시각에 맞춰 따라간다 */
+let pending = [], nextTime = 0, raf = 0;
+const LOOKAHEAD = .12;
+function schedule(){
+  while(nextTime < ac.currentTime + LOOKAHEAD){
+    const last = pending.length ? pending[pending.length-1].row : rows[rows.length-1];
+    const row = next(last);
+    pending.push({row, t:nextTime}); sound(row, nextTime);
+    nextTime += interval()/1000;
+  }
+}
+function flush(){
+  let moved = false;
+  while(pending.length && pending[0].t <= ac.currentTime){
+    rows.push(pending.shift().row); moved = true;
+  }
+  if(moved){ if(rows.length>400) rows.splice(0, rows.length-400); draw(); }
+  if(playing) raf = requestAnimationFrame(flush);
+}
+function tick(){ // 오디오가 없는 환경용 대체 경로
+  if(ac){ schedule(); timer = setTimeout(tick, 25); }
+  else { stepOnce(); timer = setTimeout(tick, interval()); }
+}
 function setPlaying(p){
   playing = p;
   $('play').textContent = p ? '⏸ 멈춤' : '▶ 재생';
-  clearTimeout(timer);
-  if(p){ ensureAudio(); sound(rows[rows.length-1]); timer = setTimeout(tick, interval()); }
+  clearTimeout(timer); cancelAnimationFrame(raf);
+  if(p){
+    ensureAudio();
+    if(ac){ sound(rows[rows.length-1]); nextTime = ac.currentTime + interval()/1000; raf = requestAnimationFrame(flush); }
+    tick();
+  } else if(pending.length){ // 이미 예약된 줄은 화면에도 반영
+    pending.forEach(x=>rows.push(x.row)); pending = []; draw();
+  }
 }
 
 /* ---------- 규칙 UI ---------- */
@@ -250,7 +287,7 @@ function setRule(r){
   $('rule').value = rule; renderBits();
   const pr = PRESETS.find(x=>x[0]===rule);
   $('desc').textContent = pr ? `규칙 ${rule}: ${pr[1]}` : `규칙 ${rule}: 이름 없는 규칙. 어떤 무늬가 나올지 들어보자.`;
-  try{ history.replaceState(null,'','#'+rule); }catch(e){}
+  updateHash();
 }
 function buildPresets(){
   const box = $('presets');
@@ -264,17 +301,19 @@ function buildPresets(){
 /* ---------- 이벤트 ---------- */
 $('play').onclick = ()=> setPlaying(!playing);
 $('step').onclick = ()=>{ ensureAudio(); stepOnce(); };
-$('reset').onclick = reset;
+$('reset').onclick = ()=>reset(seed);
 $('rule').onchange = e => setRule(+e.target.value);
 $('randRule').onclick = ()=>{ setRule(Math.floor(Math.random()*256)); reset(); };
 $('tempo').oninput = e => $('tempoVal').textContent = e.target.value+' BPM';
-$('seed').onchange = reset;
+$('seed').onchange = ()=>reset();
 cv.addEventListener('pointerdown', e=>{
   const rect = cv.getBoundingClientRect(), cell = rect.width/COLS;
   const x = Math.floor((e.clientX-rect.left)/cell), y = Math.floor((e.clientY-rect.top)/cell);
   if(y===0 && x>=0 && x<COLS){
-    if(rows.length>1) rows = [rows[rows.length-1]]; // 현재 줄을 새 씨앗으로
-    rows[0][x] ^= 1; ensureAudio();
+    const cur = rows[rows.length-1].slice(); cur[x] ^= 1;
+    if(!cur.some(v=>v)) return;
+    reset(cur); ensureAudio(); // 현재 줄을 고친 것이 새 씨앗
+    if(playing && ac) nextTime = ac.currentTime + interval()/1000;
     if(rows[0][x] && ac) pluck(freqFor(x), ac.currentTime+.01, .15);
     draw();
   }
@@ -286,9 +325,11 @@ document.addEventListener('keydown', e=>{
 window.addEventListener('resize', resize);
 
 buildBits(); buildPresets();
-const h = parseInt(location.hash.slice(1),10);
+const [hr, hs] = location.hash.slice(1).split('-');
+const h = parseInt(hr,10);
 setRule(Number.isFinite(h)?h:90);
-reset(); resize();
+const hsRow = hs ? hexSeed(hs) : null;
+reset(hsRow || undefined); resize();
 })();
 </script>
 </body>
