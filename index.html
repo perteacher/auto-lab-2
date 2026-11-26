@@ -107,6 +107,10 @@ const maxMp=()=>8+S.lv*2+3*P('wick');
 const atk=()=>4+S.lv*2+S.weapon.atk;
 const def=()=>1+Math.floor(S.lv*0.8)+S.armor.def;
 const needExp=lv=>Math.round(10*Math.pow(lv,1.45));
+// 레벨 구간 칭호: 겉모습(등불 크기·망토·머리 불꽃)도 함께 바뀐다
+const RANKS=[{lv:1,n:'견습 등불지기',cape:'#7a2f3a'},{lv:5,n:'등불지기',cape:'#2f5a7a'},{lv:10,n:'숙련 등불지기',cape:'#4a3a8a'},{lv:15,n:'등불 수호자',cape:'#8a6a1f'}];
+const rankOf=lv=>{let r=0;RANKS.forEach((k,i)=>{if(lv>=k.lv)r=i});return r};
+const statSnap=()=>({atk:atk(),def:def(),hp:maxHp(),mp:maxMp()});
 
 // ================= 오디오 (Web Audio로 생성) =================
 let AC=null;
@@ -168,7 +172,7 @@ function drawHero(t){
   if(fx.heroHit>0){cx.globalAlpha=.5+.5*Math.sin(t/30)}
   cx.fillStyle='rgba(0,0,0,.35)';cx.beginPath();cx.ellipse(0,0,30,7,0,0,7);cx.fill();
   // 망토
-  cx.fillStyle='#7a2f3a';cx.beginPath();cx.moveTo(-18,-60+b);cx.lineTo(-26,-4);cx.lineTo(10,-4);cx.closePath();cx.fill();
+  const rk=S?rankOf(S.lv):0;cx.fillStyle=RANKS[rk].cape;cx.beginPath();cx.moveTo(-18,-60+b);cx.lineTo(-26,-4);cx.lineTo(10,-4);cx.closePath();cx.fill();
   // 몸
   cx.fillStyle='#d9b27c';cx.fillRect(-14,-58+b,26,44);
   cx.fillStyle='#5a3b2a';cx.fillRect(-14,-24+b,26,6);
@@ -178,6 +182,9 @@ function drawHero(t){
   cx.fillStyle='#f2d3b0';cx.beginPath();cx.arc(0,-72+b,15,0,7);cx.fill();
   cx.fillStyle='#4a2c1a';cx.beginPath();cx.arc(0,-76+b,15,Math.PI,0);cx.fill();
   cx.fillStyle='#222';cx.fillRect(5,-74+b,3,4);
+  if(rk>=2){cx.fillStyle='#ffd257';cx.fillRect(-16,-80+b,32,3)} // 금빛 머리띠
+  if(rk>=3){const ff=Math.sin(t/70)*2;cx.fillStyle='rgba(255,150,60,.85)';cx.beginPath();cx.moveTo(-6,-88+b);cx.quadraticCurveTo(0,-104+b+ff,6,-88+b);cx.fill()}
+  if(rk>=1){cx.strokeStyle='rgba(255,210,110,.5)';cx.lineWidth=2;cx.beginPath();cx.moveTo(-26,-4);cx.lineTo(10,-4);cx.stroke()}
   // 무기
   const wc=['#bbb','#7be38a','#5fb4ff','#d28bff'][S?S.weapon.r:0];
   cx.save();cx.translate(16,-40+b);cx.rotate(G.swing?-1.4+G.swing*2.2:-.5);
@@ -185,8 +192,8 @@ function drawHero(t){
   // 등불 (손에)
   const fl=Math.sin(t/90)*1.5;
   cx.fillStyle='#2a2333';cx.fillRect(-26,-42+b,3,10);
-  const rg=cx.createRadialGradient(-24,-28+b,1,-24,-28+b,24+fl);rg.addColorStop(0,'rgba(255,210,110,.9)');rg.addColorStop(1,'rgba(255,210,110,0)');
-  cx.fillStyle=rg;cx.fillRect(-60,-64+b,72,72);cx.fillStyle='#ffd27a';cx.fillRect(-29,-33+b,10,11);
+  const lr=24+Math.min(40,(S?S.lv-1:0)*2.2),rg=cx.createRadialGradient(-24,-28+b,1,-24,-28+b,lr+fl);rg.addColorStop(0,'rgba(255,210,110,.9)');rg.addColorStop(1,'rgba(255,210,110,0)');
+  cx.fillStyle=rg;cx.fillRect(-24-lr-4,-28+b-lr-4,lr*2+8,lr*2+8);cx.fillStyle='#ffd27a';cx.fillRect(-29,-33+b,10,11);
   cx.restore();
 }
 function drawEnemy(t){
@@ -285,7 +292,7 @@ function render(t){
   if(G.mode==='title'){drawTitle(t)}
   else{if(S)drawHero(t);if(G.mode==='battle'){drawEnemy(t);drawEvent(t)}drawTiming(t);drawGuard(t);
     if(G.mode==='town'){cx.fillStyle='#ffe2a8';cx.font='bold 24px sans-serif';cx.textAlign='center';cx.fillText('탑 입구 · 쉼터',W/2,70);
-      cx.font='15px sans-serif';cx.fillStyle='#d8cbb8';cx.fillText('최고 '+S.best+'층 · 다음 출발 '+S.checkpoint+'층',W/2,96)}
+      cx.font='15px sans-serif';cx.fillStyle='#d8cbb8';cx.fillText('최고 '+S.best+'층 · 다음 출발 '+S.checkpoint+'층',W/2,96);cx.fillStyle='#ffcf6e';cx.font='bold 15px sans-serif';cx.fillText('「'+RANKS[rankOf(S.lv)].n+'」 Lv'+S.lv,150,H-200)}
   }
   // 파티클
   for(const p of fx.parts){p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.life-=.03;cx.globalAlpha=Math.max(0,p.life);cx.fillStyle=p.c;cx.fillRect(p.x,p.y,4,4)}
@@ -293,7 +300,25 @@ function render(t){
   for(const f of fx.texts){f.y-=1.1;f.life-=.018;cx.globalAlpha=Math.max(0,f.life);cx.font=`bold ${f.size}px sans-serif`;cx.textAlign='center';
     cx.lineWidth=5;cx.strokeStyle='#000';cx.strokeText(f.t,f.x,f.y);cx.fillStyle=f.c;cx.fillText(f.t,f.x,f.y)}
   fx.texts=fx.texts.filter(f=>f.life>0);cx.globalAlpha=1;
+  drawLvCard(t);
   if(fx.flash>0){cx.fillStyle=`rgba(255,255,255,${fx.flash})`;cx.fillRect(0,0,W,H);fx.flash=Math.max(0,fx.flash-.06)}
+  cx.restore();
+}
+function drawLvCard(t){
+  const c=fx.lvCard;if(!c)return;const age=t-c.t0;if(c.t0>t)return;const dur=2600;if(age>dur){fx.lvCard=null;return}
+  const a=age<200?age/200:age>dur-400?(dur-age)/400:1,pop=age<200?.8+.2*age/200:1;
+  cx.save();cx.globalAlpha=a;cx.fillStyle='rgba(10,8,16,.78)';cx.fillRect(0,0,W,H);
+  cx.translate(W/2,H/2);cx.scale(pop,pop);
+  const rg=cx.createRadialGradient(0,-60,5,0,-60,180);rg.addColorStop(0,'rgba(255,200,90,.35)');rg.addColorStop(1,'rgba(255,200,90,0)');cx.fillStyle=rg;cx.fillRect(-300,-240,600,400);
+  cx.textAlign='center';cx.font='bold 40px sans-serif';cx.lineWidth=6;cx.strokeStyle='#000';cx.strokeText('LEVEL UP!',0,-95);cx.fillStyle='#ffd257';cx.fillText('LEVEL UP!',0,-95);
+  cx.font='bold 22px sans-serif';cx.fillStyle='#fff';cx.fillText('Lv '+c.from+'  →  Lv '+c.to,0,-60);
+  if(c.rank){cx.font='bold 18px sans-serif';cx.fillStyle='#ffcf6e';cx.fillText('✦ 새 칭호: '+c.rank+' ✦',0,-34)}
+  const rows=[['⚔️ 공격','atk'],['🛡️ 방어','def'],['❤️ 체력','hp'],['💧 마력','mp']];
+  rows.forEach(([n,k],i)=>{const y=-2+i*32,show=age>300+i*160;if(!show)return;
+    cx.font='18px sans-serif';cx.textAlign='right';cx.fillStyle='#d8cbb8';cx.fillText(n,-40,y);
+    cx.textAlign='left';cx.fillStyle='#fff';cx.fillText(c.a[k]+'  →  ',-28,y);const w=cx.measureText(c.a[k]+'  →  ').width;
+    cx.font='bold 20px sans-serif';cx.fillStyle='#ffd257';cx.fillText(c.b[k],-28+w,y);const w2=cx.measureText(String(c.b[k])).width;
+    const d=c.b[k]-c.a[k];if(d>0){cx.font='bold 15px sans-serif';cx.fillStyle='#7be38a';cx.fillText(' ▲'+d,-28+w+w2,y)}});
   cx.restore();
 }
 function drawTitle(t){
@@ -328,7 +353,7 @@ function hud(){
    <span class="chip" style="flex:1;min-width:90px">MP ${S.mp}/${mm}<div class="bar"><i style="width:${100*S.mp/mm}%;background:var(--mp)"></i></div></span>
    <span class="chip">🪙 ${S.gold}</span><span class="chip">🧪 ${S.potions}</span>
    ${G.floor?`<span class="chip">${G.floor}층</span>`:''}
-   <span class="chip" style="flex-basis:100%">EXP<div class="bar"><i style="width:${100*S.exp/needExp(S.lv)}%;background:var(--gold)"></i></div></span>`;
+   <span class="chip" style="flex-basis:100%">EXP ${S.exp}/${needExp(S.lv)}<div class="bar"><i style="width:${100*S.exp/needExp(S.lv)}%;background:var(--gold)"></i></div></span>`;
 }
 function info(html){$('info').innerHTML=html?`<div class="panel">${html}</div>`:''}
 
@@ -360,7 +385,8 @@ function town(first){
 function showEquip(){
   info(`<b>장비</b><br>무기: <span class="${RAR[S.weapon.r].c}">${S.weapon.name}</span> (공격 +${S.weapon.atk})<br>
   방어구: <span class="${RAR[S.armor.r].c}">${S.armor.name}</span> (방어 +${S.armor.def}, 체력 +${S.armor.hp})<br>
-  능력치: 공격 ${atk()} · 방어 ${def()} · 최대체력 ${maxHp()}<br>
+  능력치: 공격 ${atk()} · 방어 ${def()} · 최대체력 ${maxHp()} <span style="color:var(--ok)">(처음보다 공격 ×${(atk()/7).toFixed(1)} · 체력 ×${(maxHp()/38).toFixed(1)})</span><br>
+  칭호: <b>${RANKS[rankOf(S.lv)].n}</b>${rankOf(S.lv)<RANKS.length-1?` <span style="color:var(--dim)">(Lv${RANKS[rankOf(S.lv)+1].lv}에 「${RANKS[rankOf(S.lv)+1].n}」)</span>`:''}<br>
   특성: ${PERKS.filter(p=>P(p.id)).map(p=>p.ic+p.n+' '+P(p.id)).join(' · ')||'<span style="color:var(--dim)">없음 (레벨업 때 고름)</span>'}<br>
   <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 콤보 ${S.stats.bestCombo||0} · 만난 사건 ${S.stats.events||0}</span>`);
 }
@@ -390,12 +416,12 @@ function makeEnemy(f){
   e.hp=e.maxHp;return e;
 }
 function nextFloor(){
-  enemy=makeEnemy(G.floor);G.phase='menu';G.tb=null;G.second=false;fx.enemyX=200;
-  hud();info('');
+  enemy=makeEnemy(G.floor);G.phase='intro';G.tb=null;G.second=false;fx.enemyX=200;
+  hud();info('');setActs([]); // 버튼을 바로 비워 연타로 층을 건너뛰는 버그 방지
   const RG=regionOf(G.floor),newReg=(G.floor-1)%5===0;
   if(newReg){floatText(300,80,'— '+RG.n+' —','#ffcf6e',30);SFX.lv()}
   setMsg((newReg?`<b style="color:#ffcf6e">📜 ${RG.n}</b> — ${RG.intro}<br>`:'')+`<b>${G.floor}층</b> — ${enemy.boss?'👑 보스 ':''}<b>${enemy.name}</b>이(가) 등불을 가로막고 있다!`);
-  setTimeout(menu,400);
+  const me=enemy;setTimeout(()=>{if(enemy===me&&G.phase==='intro')menu()},400);
 }
 function menu(){
   if(G.mode!=='battle')return;G.phase='menu';G.tb=null;hud();
@@ -538,15 +564,17 @@ function afterWin(){
   G.phase='afterWin';
 }
 function levelCheck(){ // 경험치로 레벨업 처리, 오른 레벨 수 반환
+  const a=statSnap(),from=S.lv,r0=rankOf(S.lv);
   let ups=0;while(S.exp>=needExp(S.lv)){S.exp-=needExp(S.lv);S.lv++;ups++}
   S.pendingPerks=(S.pendingPerks||0)+ups;
-  if(ups){S.hp=maxHp();S.mp=maxMp();setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500)}
+  if(ups){S.hp=maxHp();S.mp=maxMp();const r1=rankOf(S.lv);fx.lvCard={t0:performance.now()+500,from,to:S.lv,a,b:statSnap(),rank:r1>r0?RANKS[r1].n:null};setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500)}
   return ups;
 }
 // ================= 층 사이 이벤트 =================
 // 보스 층·지역 첫 층 앞에는 안 나오고, 연달아 나오지 않음. 이벤트 칸을 지나면 같은 층의 전투가 이어진다.
 const EVENT_RATE=.3;
 function goNext(){
+  if(G.phase!=='afterWin')return; // 두 번 눌림 방지
   G.floor++;const f=G.floor;
   const can=f%5!==0&&(f-1)%5!==0&&G.lastEv!==f-1;
   if(can&&Math.random()<(G.forceEv?1:EVENT_RATE))return floorEvent(G.forceEv);
@@ -563,7 +591,7 @@ function floorEvent(kind){
 function evContinue(lines){
   G.phase='evDone';G.ev.done=true;save();hud();
   if(lines)setMsg(lines);
-  const go=()=>{G.ev=null;nextFloor()};
+  const go=()=>{if(G.phase!=='evDone')return;G.ev=null;nextFloor()};
   const cont=()=>setActs([{t:`⬆️ ${G.floor}층 계속 오르기`,k:'스페이스',cls:'main wide',f:go}]);
   if(S.pendingPerks>0)perkPick(()=>{G.phase='evDone';if(lines)setMsg(lines);cont()});else cont();
 }
