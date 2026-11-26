@@ -252,13 +252,38 @@ function drawGuard(t){
     cx.font='bold 20px sans-serif';cx.fillStyle='#fff';cx.fillText('지금 막기!',W/2,330)}
   else{cx.fillStyle='rgba(255,255,255,.75)';cx.font='bold 17px sans-serif';cx.fillText(e.name+'이(가) 노린다… ‘!’가 뜨면 탭',W/2,330)}
 }
+function drawEvent(t){
+  const ev=G.ev;if(!ev||enemy)return;const x=440,y=H-90,b=Math.sin(t/400)*2;
+  cx.save();cx.translate(x,y);
+  cx.fillStyle='rgba(0,0,0,.35)';cx.beginPath();cx.ellipse(0,0,40,8,0,0,7);cx.fill();
+  if(ev.kind==='chest'){
+    if(ev.done&&ev.res!=='trap'){const rg=cx.createRadialGradient(0,-50,4,0,-50,90);rg.addColorStop(0,'rgba(255,215,110,.6)');rg.addColorStop(1,'rgba(255,215,110,0)');cx.fillStyle=rg;cx.fillRect(-100,-150,200,160)}
+    cx.fillStyle='#6b4226';cx.fillRect(-36,-40,72,40);cx.fillStyle='#d9a441';cx.fillRect(-36,-40,72,5);cx.fillRect(-4,-40,8,40);
+    cx.save();cx.translate(-36,-40);cx.rotate(ev.done?-.9:Math.sin(t/180)*.02);cx.fillStyle='#7d4e2d';cx.fillRect(0,-22,72,22);cx.fillStyle='#d9a441';cx.fillRect(0,-22,72,4);cx.fillRect(32,-22,8,22);cx.restore();
+    if(!ev.done){cx.fillStyle='#ffe9a8';cx.fillRect(-3,-34,6,8)}
+  }else if(ev.kind==='merchant'){
+    cx.fillStyle='#5a4a3a';cx.fillRect(14,-70+b,30,46);cx.fillStyle='#3a2f26';cx.fillRect(14,-50+b,30,4); // 등짐
+    cx.fillStyle='#2f5a4f';cx.beginPath();cx.moveTo(-26,0);cx.lineTo(-18,-80+b);cx.quadraticCurveTo(0,-104+b,18,-80+b);cx.lineTo(26,0);cx.closePath();cx.fill();
+    cx.fillStyle='#120e18';cx.beginPath();cx.arc(0,-78+b,12,0,7);cx.fill();cx.fillStyle='#ffe9a8';cx.fillRect(-7,-80+b,4,3);cx.fillRect(3,-80+b,4,3);
+    cx.fillStyle='#2a2333';cx.fillRect(-40,-60+b,3,24);const fl=Math.sin(t/90)*1.5;
+    const rg=cx.createRadialGradient(-38,-34+b,1,-38,-34+b,22+fl);rg.addColorStop(0,'rgba(140,255,200,.8)');rg.addColorStop(1,'rgba(140,255,200,0)');cx.fillStyle=rg;cx.fillRect(-70,-66+b,64,64);
+    cx.fillStyle='#9fffd0';cx.fillRect(-43,-40+b,10,10);
+  }else if(ev.kind==='altar'){
+    cx.fillStyle='#4a4458';cx.fillRect(-30,-50,60,50);cx.fillStyle='#5d566d';cx.fillRect(-38,-58,76,10);cx.fillRect(-38,-6,76,6);
+    cx.fillStyle='#2a2333';cx.fillRect(-4,-82,8,24);
+    const lit=ev.done;if(lit){const rg=cx.createRadialGradient(0,-92,2,0,-92,70);rg.addColorStop(0,'rgba(255,200,90,.7)');rg.addColorStop(1,'rgba(255,200,90,0)');cx.fillStyle=rg;cx.fillRect(-80,-170,160,160)}
+    cx.fillStyle=lit?'#ffcf6e':'#3b3445';cx.beginPath();cx.arc(0,-92,11,0,7);cx.fill();
+  }
+  cx.restore();
+  cx.fillStyle='#fff';cx.font='bold 15px sans-serif';cx.textAlign='center';cx.fillText(ev.title,440,32);
+}
 function render(t){
   cx.save();
   if(fx.shake>0){cx.translate((Math.random()-.5)*fx.shake,(Math.random()-.5)*fx.shake);fx.shake*=.86;if(fx.shake<.5)fx.shake=0}
   drawBg(t);
   if(G.mode==='battle'&&G.combo>=2){cx.textAlign='left';cx.font='bold 22px sans-serif';cx.fillStyle='#ffd257';cx.fillText('콤보 ×'+G.combo+'  (+'+Math.round(comboBonus()*100)+'%)',16,32)}
   if(G.mode==='title'){drawTitle(t)}
-  else{if(S)drawHero(t);if(G.mode==='battle')drawEnemy(t);drawTiming(t);drawGuard(t);
+  else{if(S)drawHero(t);if(G.mode==='battle'){drawEnemy(t);drawEvent(t)}drawTiming(t);drawGuard(t);
     if(G.mode==='town'){cx.fillStyle='#ffe2a8';cx.font='bold 24px sans-serif';cx.textAlign='center';cx.fillText('탑 입구 · 쉼터',W/2,70);
       cx.font='15px sans-serif';cx.fillStyle='#d8cbb8';cx.fillText('최고 '+S.best+'층 · 다음 출발 '+S.checkpoint+'층',W/2,96)}
   }
@@ -292,7 +317,8 @@ function loop(t){
 // ================= UI =================
 const $=id=>document.getElementById(id);
 function setMsg(h){$('msg').innerHTML=h}
-function setActs(list){const a=$('acts');a.innerHTML='';list.forEach(b=>{const el=document.createElement('button');el.innerHTML=b.t+(b.k?`<small class="k">${b.k}</small>`:'');
+let curActs=[];
+function setActs(list){curActs=list;const a=$('acts');a.innerHTML='';list.forEach(b=>{const el=document.createElement('button');el.innerHTML=b.t+(b.k?`<small class="k">${b.k}</small>`:'');
   if(b.cls)el.className=b.cls;if(b.dis)el.disabled=true;el.onclick=e=>{e.stopPropagation();au();b.f()};a.appendChild(el)})}
 function hud(){
   if(!S||G.mode==='title'){$('hud').innerHTML='';return}
@@ -336,7 +362,7 @@ function showEquip(){
   방어구: <span class="${RAR[S.armor.r].c}">${S.armor.name}</span> (방어 +${S.armor.def}, 체력 +${S.armor.hp})<br>
   능력치: 공격 ${atk()} · 방어 ${def()} · 최대체력 ${maxHp()}<br>
   특성: ${PERKS.filter(p=>P(p.id)).map(p=>p.ic+p.n+' '+P(p.id)).join(' · ')||'<span style="color:var(--dim)">없음 (레벨업 때 고름)</span>'}<br>
-  <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 콤보 ${S.stats.bestCombo||0}</span>`);
+  <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 콤보 ${S.stats.bestCombo||0} · 만난 사건 ${S.stats.events||0}</span>`);
 }
 function forge(){
   const wc=20+S.weapon.atk*12,ac=20+(S.armor.def+S.armor.hp/4)*12;
@@ -409,7 +435,8 @@ function tap(){
 function judgeHit(dist){
   const tb=G.tb;let grade,m;
   if(dist<=tb.perfect){grade='PERFECT';m=2}else if(dist<=tb.good){grade='좋아';m=1.25}else if(dist<9){grade='빗맞음';m=.5}else{grade='놓침';m=.35}
-  const base=atk()*m*tb.mult[0]*(1+(grade==='PERFECT'?comboBonus():0));
+  let emb=1;if(G.ember&&grade==='PERFECT'){emb=1.5;G.ember=0;floatText(440,110,'불씨!','#ff9a3c',24)}
+  const base=atk()*m*tb.mult[0]*(1+(grade==='PERFECT'?comboBonus():0))*emb;
   let dmg=Math.max(1,Math.round(base-enemy.def*.6+(Math.random()*2-1)*atk()*.08));
   enemy.hp-=dmg;
   if(grade==='PERFECT'&&P('leech')){const h=Math.max(1,Math.round(dmg*.1*P('leech')));S.hp=Math.min(maxHp(),S.hp+h);floatText(150,170,'+'+h,'#7be38a',22)}
@@ -480,9 +507,8 @@ function win(){
   if(f%5===0)S.checkpoint=f+1;
   let lines=[`<b>${enemy.name}</b>을(를) 물리쳤다! ${f}층 등불이 다시 켜졌다 🏮`,`경험치 +${enemy.exp} · 🪙 +${gold}`];
   // 레벨업
-  let ups=0;while(S.exp>=needExp(S.lv)){S.exp-=needExp(S.lv);S.lv++;ups++}
-  S.pendingPerks=(S.pendingPerks||0)+ups;
-  if(ups){S.hp=maxHp();S.mp=maxMp();setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500);
+  const ups=levelCheck();
+  if(ups){
     lines.push(`<b style="color:#ffd257">레벨 업! Lv${S.lv}</b> — 공격 ${atk()} · 방어 ${def()} · 체력 ${maxHp()} (체력·마력 회복)`)}
   else{S.hp=Math.min(maxHp(),S.hp+Math.round(maxHp()*.1));S.mp=Math.min(maxMp(),S.mp+1)}
   if(f%5===0)lines.push(`<b>체크포인트!</b> 다음엔 ${f+1}층부터 시작할 수 있다.`);
@@ -506,10 +532,74 @@ function perkPick(done){
 function afterWin(){
   info('');
   setActs([
-    {t:`⬆️ ${G.floor+1}층으로`,k:'스페이스',cls:'main',f:()=>{G.floor++;nextFloor()}},
+    {t:`⬆️ ${G.floor+1}층으로`,k:'스페이스',cls:'main',f:()=>goNext()},
     {t:'🏠 쉼터로',k:'저장·회복',f:()=>town()},
   ]);
   G.phase='afterWin';
+}
+function levelCheck(){ // 경험치로 레벨업 처리, 오른 레벨 수 반환
+  let ups=0;while(S.exp>=needExp(S.lv)){S.exp-=needExp(S.lv);S.lv++;ups++}
+  S.pendingPerks=(S.pendingPerks||0)+ups;
+  if(ups){S.hp=maxHp();S.mp=maxMp();setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500)}
+  return ups;
+}
+// ================= 층 사이 이벤트 =================
+// 보스 층·지역 첫 층 앞에는 안 나오고, 연달아 나오지 않음. 이벤트 칸을 지나면 같은 층의 전투가 이어진다.
+const EVENT_RATE=.3;
+function goNext(){
+  G.floor++;const f=G.floor;
+  const can=f%5!==0&&(f-1)%5!==0&&G.lastEv!==f-1;
+  if(can&&Math.random()<(G.forceEv?1:EVENT_RATE))return floorEvent(G.forceEv);
+  nextFloor();
+}
+function floorEvent(kind){
+  const kinds=['chest','chest','merchant','altar'];kind=kind||kinds[Math.floor(Math.random()*kinds.length)];
+  G.lastEv=G.floor;enemy=null;G.phase='event';G.tb=null;
+  G.ev={kind,done:false,title:{chest:'낡은 보물상자',merchant:'떠돌이 기름장수',altar:'꺼진 등불 제단'}[kind]};
+  S.stats.events=(S.stats.events||0)+1;
+  hud();info('');SFX.item();floatText(440,110,'?','#ffcf6e',40);
+  ({chest:evChest,merchant:evMerchant,altar:evAltar})[kind]();
+}
+function evContinue(lines){
+  G.phase='evDone';G.ev.done=true;save();hud();
+  if(lines)setMsg(lines);
+  const go=()=>{G.ev=null;nextFloor()};
+  const cont=()=>setActs([{t:`⬆️ ${G.floor}층 계속 오르기`,k:'스페이스',cls:'main wide',f:go}]);
+  if(S.pendingPerks>0)perkPick(()=>{G.phase='evDone';if(lines)setMsg(lines);cont()});else cont();
+}
+function evChest(){
+  setMsg(`<b>${G.floor}층</b> 계단참에 <b style="color:#ffcf6e">낡은 보물상자</b>가 있다. 자물쇠는 녹슬었다… 열어 볼까?<br><span style="color:var(--dim)">대부분 좋은 것이 들어 있지만, 가끔 그림자가 숨어 있다.</span>`);
+  setActs([
+    {t:'🎁 열기',k:'1',cls:'main',f:()=>{
+      const r=Math.random(),f=G.floor;G.ev.res='';
+      if(r<.15){G.ev.res='trap';const d=Math.max(1,Math.min(Math.ceil(S.hp)-1,Math.round(maxHp()*.15)));S.hp-=d;SFX.hurt();fx.shake=10;fx.heroHit=300;floatText(150,190,'-'+d,'#ff5d6c',30);
+        return evContinue(`상자에서 그림자 손이 튀어나와 할퀴었다! <b style="color:#ff5d6c">체력 -${d}</b><br><span style="color:var(--dim)">(함정 상자로는 쓰러지지 않는다)</span>`)}
+      burst(440,230,'#ffd257',26);SFX.win();
+      if(r<.6){const g=Math.round((10+f*6)*(1+.2*P('luck'))*(.8+Math.random()*.5));S.gold+=g;floatText(440,150,'🪙+'+g,'#ffd257',30);return evContinue(`상자 안에서 반짝이는 동전! <b style="color:#ffd257">🪙 +${g}</b>`)}
+      if(r<.85){const n=Math.random()<.3?2:1;S.potions+=n;floatText(440,150,'🧪+'+n,'#7be38a',30);return evContinue(`잘 봉해진 회복약 <b style="color:#7be38a">🧪 +${n}</b>개!`)}
+      const it=makeItem(f+1,false);if(it.r<1)it.r=1,it.name=RAR[1].n+it.name.slice(RAR[0].n.length),it.slot==='weapon'?it.atk=Math.round(it.atk*1.35):(it.def=Math.round(it.def*1.35),it.hp=Math.round(it.hp*1.35));
+      G.phase='evDone';G.ev.done=true;offerItem(it,()=>{G.phase='evDone';evContinue('상자 속 장비를 챙겼다.')});G.phase='event'}},
+    {t:'👣 그냥 지나가기',k:'2',f:()=>evContinue('괜히 건드리지 말자. 상자를 지나쳤다.')},
+  ]);
+}
+function evMerchant(){
+  G.ev.bought=G.ev.bought||0;const pp=10,op=12;
+  setMsg(`등에 기름통을 멘 <b style="color:#9fffd0">떠돌이 기름장수</b>: "탑 안에선 쉼터보다 싸게 팔지. 대신 두 병까지만."`);
+  const full=S.mp>=maxMp();
+  setActs([
+    {t:'🧪 회복약',k:`1 · ${pp}🪙 · 남은 ${2-G.ev.bought}`,dis:S.gold<pp||G.ev.bought>=2,f:()=>{S.gold-=pp;S.potions++;G.ev.bought++;SFX.item();floatText(150,190,'🧪+1','#7be38a',26);save();hud();evMerchant()}},
+    {t:'🕯️ 등불 기름',k:`2 · ${op}🪙 · MP 가득`,dis:S.gold<op||full,f:()=>{S.gold-=op;S.mp=maxMp();SFX.heal();floatText(150,190,'MP 가득','#5fb4ff',24);save();hud();evMerchant()}},
+    {t:'👋 고마워요, 갈게요',k:'3',cls:'main',f:()=>evContinue('기름장수가 손을 흔든다. "꼭대기에서 보자고."')},
+  ]);
+}
+function evAltar(){
+  const f=G.floor,h=Math.round(maxHp()*.35),xp=Math.round(needExp(S.lv)*.35);
+  setMsg(`먼지 쌓인 <b style="color:#ffcf6e">꺼진 등불 제단</b>. 손의 등불을 옮겨 붙이면, 불꽃이 무언가를 돌려준다.<br><b>하나만</b> 고를 수 있다.`);
+  setActs([
+    {t:'❤️ 따뜻함',k:`1 · 체력 +${h}`,cls:'wide',f:()=>{S.hp=Math.min(maxHp(),S.hp+h);SFX.heal();burst(150,250,'#7be38a',16);floatText(150,190,'+'+h,'#7be38a',30);evContinue('제단의 불이 몸을 데운다. <b style="color:#7be38a">체력 회복!</b>')}},
+    {t:'✨ 깨달음',k:`2 · 경험치 +${xp}`,cls:'wide',f:()=>{S.exp+=xp;SFX.lv();burst(440,200,'#ffd257',20);floatText(150,150,'EXP +'+xp,'#ffd257',26);const u=levelCheck();evContinue(`불꽃 속에 옛 등불지기의 기억이 비친다. <b style="color:#ffd257">경험치 +${xp}</b>`+(u?`<br><b style="color:#ffd257">레벨 업! Lv${S.lv}</b>`:''))}},
+    {t:'🔥 불씨',k:'3 · 다음 PERFECT 피해 ×1.5',cls:'wide',f:()=>{G.ember=1;SFX.fire();burst(150,230,'#ff9a3c',18);evContinue('손의 등불에 붉은 불씨가 옮겨 붙었다. <b style="color:#ff9a3c">다음 PERFECT 한 방이 1.5배!</b>')}},
+  ]);
 }
 function makeItem(f,boss){
   let r=0;const x=Math.random()+(boss?.5:0)+f*.015;
@@ -518,7 +608,7 @@ function makeItem(f,boss){
   return weapon?{slot:'weapon',name:RAR[r].n+' '+WNAMES[Math.min(WNAMES.length-1,Math.floor(f/3))],atk:p,r}
                :{slot:'armor',name:RAR[r].n+' '+ANAMES[Math.min(ANAMES.length-1,Math.floor(f/4))],def:Math.max(0,Math.round(p*.6)),hp:p*3,r};
 }
-function offerItem(it){
+function offerItem(it,done=afterWin){
   SFX.item();G.phase='item';
   const cur=S[it.slot];
   const desc=it.slot==='weapon'?`공격 +${it.atk} (지금 +${cur.atk})`:`방어 +${it.def}, 체력 +${it.hp} (지금 +${cur.def}, +${cur.hp})`;
@@ -526,8 +616,8 @@ function offerItem(it){
   const price=Math.round(5+(it.atk||it.def*2+it.hp/3)*2*RAR[it.r].m);
   info(`🎁 <b>장비 발견!</b> <span class="${RAR[it.r].c}">${it.name}</span><br>${desc} ${better?'<b style="color:#7be38a">▲ 더 좋음</b>':'<span style="color:#a99fba">▼ 지금 것이 나음</span>'}`);
   setActs([
-    {t:'장착',cls:better?'main':'',f:()=>{S[it.slot]={name:it.name,atk:it.atk||0,def:it.def||0,hp:it.hp||0,r:it.r};if(it.hp)S.hp=Math.min(maxHp(),S.hp);SFX.item();save();hud();afterWin()}},
-    {t:`팔기 (+${price}🪙)`,cls:better?'':'main',f:()=>{S.gold+=price;save();hud();afterWin()}},
+    {t:'장착',cls:better?'main':'',f:()=>{S[it.slot]={name:it.name,atk:it.atk||0,def:it.def||0,hp:it.hp||0,r:it.r};if(it.hp)S.hp=Math.min(maxHp(),S.hp);SFX.item();save();hud();done()}},
+    {t:`팔기 (+${price}🪙)`,cls:better?'':'main',f:()=>{S.gold+=price;save();hud();done()}},
   ]);
 }
 function lose(){
@@ -544,15 +634,17 @@ document.addEventListener('keydown',e=>{
   if(e.repeat)return;
   if(e.code==='Space'||e.code==='Enter'){e.preventDefault();
     if(G.mode==='battle'&&(G.phase==='aim'||G.phase==='enemyWind'||G.phase==='menu'))tap();
-    else if(G.phase==='afterWin'){G.floor++;nextFloor()}
+    else if(G.phase==='afterWin')goNext();
+    else if(G.phase==='evDone')curActs[0]&&curActs[0].f();
     return}
+  if(G.phase==='event'||G.phase==='evDone'){const i=+e.key-1;const b=curActs[i];if(b&&!b.dis)b.f();return}
   if(G.phase==='perk'&&G.perkChoices){const i=+e.key-1;if(G.perkChoices[i])G.perkPickFn(G.perkChoices[i]);return}
   if(G.mode==='battle'&&G.phase==='menu'){if(e.key==='1')startAttack();if(e.key==='2')startSkill();if(e.key==='3'&&S.potions>0&&S.hp<maxHp())usePotion()}
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&S)save()});
 
 // 테스트용 훅
-window.__game={PERKS,perkPick,get S(){return S},get G(){return G},get enemy(){return enemy},tap,newSave,migrate,SAVE_KEY};
+window.__game={floorEvent,goNext,get curActs(){return curActs},PERKS,perkPick,get S(){return S},get G(){return G},get enemy(){return enemy},tap,newSave,migrate,SAVE_KEY};
 title();requestAnimationFrame(loop);
 </script>
 </body>
