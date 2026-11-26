@@ -3,10 +3,293 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>auto-lab-2</title>
-<style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#111;color:#eee;text-align:center}</style>
+<title>셀룰러 오르골</title>
+<meta name="description" content="1차원 셀룰러 오토마타(울프럼 규칙 0~255)가 한 줄씩 자라며 연주하는 오르골">
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--fg:#e8e6e1;--dim:#8b8f99;--on:#f2c14e;--accent:#6fc3c9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:1.35rem;margin:4px 0 2px}
+.sub{color:var(--dim);font-size:.9rem;margin:0 0 14px}
+.stage{position:relative;background:#000;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+canvas{display:block;width:100%;touch-action:manipulation}
+.hint{position:absolute;left:0;right:0;top:0;text-align:center;font-size:.75rem;color:var(--dim);padding:3px;pointer-events:none;background:linear-gradient(#000c,#0000)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+button,select,input[type=number]{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px;min-height:38px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#06181a;border-color:var(--accent);font-weight:600}
+input[type=number]{width:5.2em}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+label{font-size:.9rem;color:var(--dim)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px}
+.panel h2{font-size:.95rem;margin:0 0 8px}
+.bits{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.bit{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;border:1px solid var(--line);border-radius:8px;background:#11141a;cursor:pointer;min-height:0}
+.tri{display:flex;gap:2px}.tri i,.out i{width:10px;height:10px;display:block;border:1px solid #444;background:#000}
+.tri i.on,.out i.on{background:var(--on);border-color:var(--on)}
+.out{display:flex;justify-content:center}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{padding:4px 10px;min-height:32px;font-size:.85rem}
+.note{color:var(--dim);font-size:.85rem;margin:6px 0 0}
+footer{color:var(--dim);font-size:.8rem;margin:24px 0 8px;text-align:center}
+@media (max-width:480px){.tri i,.out i{width:8px;height:8px}.bits{gap:3px}}
+</style>
 </head>
 <body>
-<div><h1>auto-lab-2</h1><p>준비 중 — 주제 미정</p></div>
+<div class="wrap">
+  <h1>🎼 셀룰러 오르골</h1>
+  <p class="sub">여덟 칸짜리 규칙 하나가 한 줄씩 자라며 음악을 만든다. 켜진 칸 = 그 열의 음.</p>
+
+  <div class="stage">
+    <canvas id="cv" aria-label="셀룰러 오토마타 화면"></canvas>
+    <div class="hint">맨 윗줄을 눌러 씨앗 칸을 켜고 끌 수 있어요</div>
+  </div>
+
+  <div class="row">
+    <button id="play" class="primary">▶ 재생</button>
+    <button id="step">한 줄</button>
+    <button id="reset">처음부터</button>
+    <label>규칙 <input id="rule" type="number" min="0" max="255" value="90"></label>
+    <button id="randRule" title="무작위 규칙">🎲</button>
+  </div>
+
+  <div class="row">
+    <label for="tempo">빠르기</label>
+    <input id="tempo" type="range" min="60" max="480" value="200">
+    <span id="tempoVal" style="width:4.5em;font-size:.9rem">200 BPM</span>
+  </div>
+
+  <div class="row">
+    <label>음계 <select id="scale">
+      <option value="maj">장조 5음계</option>
+      <option value="min">단조 5음계</option>
+      <option value="yo">요나누키(일본풍)</option>
+      <option value="dor">도리안</option>
+      <option value="whole">온음음계</option>
+    </select></label>
+    <label>씨앗 <select id="seed">
+      <option value="center">가운데 한 칸</option>
+      <option value="random">무작위</option>
+      <option value="sparse">드문드문</option>
+    </select></label>
+    <label><input id="wrap" type="checkbox" checked> 양끝 이어붙이기</label>
+  </div>
+
+  <div class="panel">
+    <h2>규칙표 — 위 세 칸(왼쪽·나·오른쪽)이 이러면, 다음 줄 나는 ▼</h2>
+    <div class="bits" id="bits"></div>
+    <p class="note">칸을 눌러 결과를 뒤집으면 규칙 번호가 바뀐다. 8개 결과를 2진수로 읽은 값이 규칙 번호.</p>
+  </div>
+
+  <div class="panel">
+    <h2>들어볼 만한 규칙</h2>
+    <div class="presets" id="presets"></div>
+    <p class="note" id="desc"></p>
+  </div>
+
+  <footer>auto-lab-2 · Claude가 스스로 정한 주제로 만드는 30일 실험 · 소리는 브라우저 안에서만 합성돼요</footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const COLS = 16; let VISIBLE = 32;
+const SCALES = {
+  maj:[0,2,4,7,9], min:[0,3,5,7,10], yo:[0,2,5,7,9], dor:[0,2,3,5,7,9,10], whole:[0,2,4,6,8,10]
+};
+const PRESETS = [
+  [90,'시에르핀스키 삼각형. 대칭으로 퍼졌다 모이는 프랙털.'],
+  [30,'혼돈. 단순한 규칙인데 예측할 수 없는 무늬 — 난수 생성에도 쓰였다.'],
+  [110,'튜링 완전. 이 규칙만으로 어떤 계산이든 흉내 낼 수 있다고 증명됐다.'],
+  [184,'교통 흐름. 켜진 칸이 차처럼 오른쪽으로 흘러간다.'],
+  [73,'벽과 방. 고정된 기둥 사이에서 작은 리듬이 반복된다.'],
+  [45,'비대칭 혼돈. 30과 비슷하지만 기울어진 질감.'],
+  [150,'XOR 셋. 90보다 촘촘한 프랙털.'],
+  [54,'입자들이 부딪히며 지나가는 무늬.']
+];
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let rule = 90, rows = [], playing = false, timer = null, ac = null, master = null, playhead = 0;
+
+function seedRow(kind){
+  const r = new Uint8Array(COLS);
+  if(kind==='center') r[COLS>>1] = 1;
+  else if(kind==='random') for(let i=0;i<COLS;i++) r[i] = Math.random()<.5?1:0;
+  else for(let i=0;i<COLS;i++) r[i] = Math.random()<.18?1:0;
+  if(!r.some(v=>v)) r[COLS>>1]=1;
+  return r;
+}
+function next(row){
+  const n = new Uint8Array(COLS), w = $('wrap').checked;
+  for(let i=0;i<COLS;i++){
+    const l = i>0?row[i-1]:(w?row[COLS-1]:0);
+    const r = i<COLS-1?row[i+1]:(w?row[0]:0);
+    n[i] = (rule >> ((l<<2)|(row[i]<<1)|r)) & 1;
+  }
+  return n;
+}
+function reset(){
+  rows = [seedRow($('seed').value)];
+  playhead = 0; draw();
+}
+
+/* ---------- 그리기 ---------- */
+function resize(){
+  const w = cv.clientWidth || 600;
+  const cell = w / COLS;
+  VISIBLE = Math.max(12, Math.min(32, Math.floor((window.innerHeight*0.55)/cell)));
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(cell*VISIBLE*dpr);
+  cv.style.height = (cell*VISIBLE)+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+function draw(){
+  const w = cv.clientWidth || 600, cell = w/COLS;
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,cell*VISIBLE);
+  const start = Math.max(0, rows.length - VISIBLE);
+  for(let y=start;y<rows.length;y++){
+    const vy = (y-start)*cell, age = rows.length-1-y, latest = age===0;
+    const row = rows[y];
+    for(let x=0;x<COLS;x++){
+      if(!row[x]) continue;
+      const hue = 40 + x*(200/COLS);
+      const a = latest ? 1 : Math.max(.25, 1 - age/VISIBLE);
+      ctx.fillStyle = `hsla(${hue},80%,${latest?68:55}%,${a})`;
+      ctx.fillRect(x*cell+1, vy+1, cell-2, cell-2);
+    }
+  }
+  // 그리드 선
+  ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+  for(let x=1;x<COLS;x++){ctx.beginPath();ctx.moveTo(x*cell,0);ctx.lineTo(x*cell,cell*VISIBLE);ctx.stroke();}
+  // 현재 줄 표시
+  const cy = (rows.length-1-start)*cell;
+  ctx.strokeStyle = 'rgba(111,195,201,.7)'; ctx.lineWidth = 2;
+  ctx.strokeRect(1, cy+1, w-2, cell-2);
+}
+
+/* ---------- 소리 ---------- */
+function ensureAudio(){
+  if(ac) { if(ac.state==='suspended') ac.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return;
+  ac = new AC();
+  master = ac.createGain(); master.gain.value = .5;
+  // 간단한 잔향: 피드백 딜레이
+  const dl = ac.createDelay(1), fb = ac.createGain(), lp = ac.createBiquadFilter();
+  dl.delayTime.value = .23; fb.gain.value = .32; lp.type='lowpass'; lp.frequency.value = 2200;
+  master.connect(ac.destination);
+  master.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); fb.connect(ac.destination);
+}
+function freqFor(col){
+  const sc = SCALES[$('scale').value];
+  const deg = col % sc.length, oct = Math.floor(col / sc.length);
+  const semi = sc[deg] + 12*oct;
+  return 220 * Math.pow(2, semi/12); // A3 기준
+}
+function pluck(f, t, vol){
+  const o = ac.createOscillator(), o2 = ac.createOscillator(), g = ac.createGain();
+  o.type='triangle'; o2.type='sine'; o.frequency.value=f; o2.frequency.value=f*2.01;
+  const g2 = ac.createGain(); g2.gain.value=.25;
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(vol,t+.005);
+  g.gain.exponentialRampToValueAtTime(.0008,t+1.1);
+  o.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
+  o.start(t); o2.start(t); o.stop(t+1.2); o2.stop(t+1.2);
+}
+function sound(row){
+  if(!ac) return;
+  const on = []; for(let i=0;i<COLS;i++) if(row[i]) on.push(i);
+  if(!on.length) return;
+  const vol = .22/Math.sqrt(on.length), t = ac.currentTime+.01;
+  on.forEach((c,k)=>pluck(freqFor(c), t + k*0.004, vol)); // 살짝 흩뿌려 오르골 느낌
+}
+
+/* ---------- 진행 ---------- */
+function stepOnce(){
+  rows.push(next(rows[rows.length-1]));
+  if(rows.length>400) rows.splice(0, rows.length-400);
+  sound(rows[rows.length-1]);
+  draw();
+}
+function interval(){ return 60000/(+$('tempo').value); }
+function tick(){ stepOnce(); timer = setTimeout(tick, interval()); }
+function setPlaying(p){
+  playing = p;
+  $('play').textContent = p ? '⏸ 멈춤' : '▶ 재생';
+  clearTimeout(timer);
+  if(p){ ensureAudio(); sound(rows[rows.length-1]); timer = setTimeout(tick, interval()); }
+}
+
+/* ---------- 규칙 UI ---------- */
+function buildBits(){
+  const box = $('bits'); box.innerHTML='';
+  for(let p=7;p>=0;p--){
+    const b = document.createElement('button');
+    b.className='bit'; b.dataset.p=p;
+    b.setAttribute('aria-label', `이웃 ${p.toString(2).padStart(3,'0')}`);
+    const tri = document.createElement('div'); tri.className='tri';
+    for(let k=2;k>=0;k--){const i=document.createElement('i'); if((p>>k)&1) i.className='on'; tri.appendChild(i);}
+    const out = document.createElement('div'); out.className='out'; out.appendChild(document.createElement('i'));
+    b.append(tri,out);
+    b.onclick = ()=>{ setRule(rule ^ (1<<p)); };
+    box.appendChild(b);
+  }
+}
+function renderBits(){
+  document.querySelectorAll('.bit').forEach(b=>{
+    const on = (rule >> +b.dataset.p) & 1;
+    b.querySelector('.out i').className = on?'on':'';
+  });
+}
+function setRule(r){
+  rule = Math.max(0, Math.min(255, r|0));
+  $('rule').value = rule; renderBits();
+  const pr = PRESETS.find(x=>x[0]===rule);
+  $('desc').textContent = pr ? `규칙 ${rule}: ${pr[1]}` : `규칙 ${rule}: 이름 없는 규칙. 어떤 무늬가 나올지 들어보자.`;
+  try{ history.replaceState(null,'','#'+rule); }catch(e){}
+}
+function buildPresets(){
+  const box = $('presets');
+  PRESETS.forEach(([r])=>{
+    const b=document.createElement('button'); b.textContent=r;
+    b.onclick=()=>{ setRule(r); reset(); };
+    box.appendChild(b);
+  });
+}
+
+/* ---------- 이벤트 ---------- */
+$('play').onclick = ()=> setPlaying(!playing);
+$('step').onclick = ()=>{ ensureAudio(); stepOnce(); };
+$('reset').onclick = reset;
+$('rule').onchange = e => setRule(+e.target.value);
+$('randRule').onclick = ()=>{ setRule(Math.floor(Math.random()*256)); reset(); };
+$('tempo').oninput = e => $('tempoVal').textContent = e.target.value+' BPM';
+$('seed').onchange = reset;
+cv.addEventListener('pointerdown', e=>{
+  const rect = cv.getBoundingClientRect(), cell = rect.width/COLS;
+  const x = Math.floor((e.clientX-rect.left)/cell), y = Math.floor((e.clientY-rect.top)/cell);
+  if(y===0 && x>=0 && x<COLS){
+    if(rows.length>1) rows = [rows[rows.length-1]]; // 현재 줄을 새 씨앗으로
+    rows[0][x] ^= 1; ensureAudio();
+    if(rows[0][x] && ac) pluck(freqFor(x), ac.currentTime+.01, .15);
+    draw();
+  }
+});
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT') return;
+  if(e.code==='Space'){ e.preventDefault(); setPlaying(!playing); }
+});
+window.addEventListener('resize', resize);
+
+buildBits(); buildPresets();
+const h = parseInt(location.hash.slice(1),10);
+setRule(Number.isFinite(h)?h:90);
+reset(); resize();
+})();
+</script>
 </body>
 </html>
