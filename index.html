@@ -49,28 +49,42 @@ footer a{color:var(--dim)}
 'use strict';
 // ================= 데이터 =================
 const SAVE_KEY='lanternTower.save';
-const SAVE_VER=1;
+const SAVE_VER=2;
 const ENEMIES=[
   {id:'slime',name:'그을음 슬라임',hp:22,atk:6,def:0,exp:6,gold:5,col:'#5b5670',shape:'slime'},
-  {id:'bat',name:'촛농 박쥐',hp:16,atk:8,def:0,exp:7,gold:6,col:'#c9b48a',shape:'bat',fast:true},
+  {id:'bat',name:'촛농 박쥐',hp:16,atk:8,def:0,exp:7,gold:6,col:'#c9b48a',shape:'bat',fast:true,double:.5},
   {id:'armor',name:'녹슨 빈 갑주',hp:34,atk:7,def:3,exp:9,gold:8,col:'#8a6a4f',shape:'armor'},
   {id:'wisp',name:'심지 도깨비불',hp:24,atk:9,def:1,exp:10,gold:9,col:'#7fd1ff',shape:'wisp',fast:true,feint:.6},
 ];
 const BOSSES=[
   {id:'keeper',name:'그림자 등지기',hp:80,atk:10,def:3,exp:40,gold:40,col:'#3d2f5c',shape:'boss',feint:.4},
-  {id:'moth',name:'잿빛 큰나방',hp:95,atk:12,def:2,exp:55,gold:55,col:'#8f8478',shape:'moth',fast:true,feint:.5},
+  {id:'moth',name:'잿빛 큰나방',hp:95,atk:12,def:2,exp:55,gold:55,col:'#8f8478',shape:'moth',fast:true,feint:.5,double:.35},
 ];
 const RAR=[{n:'평범한',c:'r1',m:1},{n:'단단한',c:'r2',m:1.35},{n:'빛나는',c:'r3',m:1.8},{n:'전설의',c:'r4',m:2.5}];
 const WNAMES=['막대','단검','장검','망치','창'];
 const ANAMES=['천옷','가죽옷','사슬옷','판금'];
+// 특성: 레벨업마다 3개 중 1개 고르기(각각 최대 3단계)
+const PERKS=[
+  {id:'eye',ic:'👁️',n:'매의 눈',d:'공격 PERFECT 칸 +25% 넓게'},
+  {id:'counter',ic:'↩️',n:'강철 반격',d:'완벽 막기 반격 피해 +40%'},
+  {id:'leech',ic:'🩸',n:'등불 흡수',d:'PERFECT 피해의 10%만큼 체력 회복'},
+  {id:'skin',ic:'🪨',n:'단단한 피부',d:'받는 피해 -8%'},
+  {id:'guard',ic:'🛡️',n:'넓은 막기',d:'막기 판정 시간 +25ms (완벽 막기도)'},
+  {id:'wick',ic:'🕯️',n:'긴 심지',d:'최대 MP +3, 등불 일격 피해 +15%'},
+  {id:'luck',ic:'🍀',n:'행운',d:'골드 +20%, 장비 드롭 확률 +8%'},
+  {id:'combo',ic:'⚡',n:'연속의 달인',d:'콤보 보너스 상한 +15% (기본 +50%)'},
+  {id:'vital',ic:'❤️',n:'활력',d:'최대 체력 +10%'},
+];
+const PMAX=3;
 
 // ================= 저장 =================
 function newSave(){return{v:SAVE_VER,lv:1,exp:0,gold:20,hp:null,mp:null,potions:2,best:0,checkpoint:1,
-  weapon:{name:'평범한 막대',atk:1,r:0},armor:{name:'평범한 천옷',def:0,hp:0,r:0},stats:{wins:0,deaths:0,perfects:0},created:Date.now()};}
+  weapon:{name:'평범한 막대',atk:1,r:0},armor:{name:'평범한 천옷',def:0,hp:0,r:0},stats:{wins:0,deaths:0,perfects:0},perks:{},pendingPerks:0,created:Date.now()};}
 function migrate(s){
   if(!s||typeof s!=='object')return null;
   if(!s.v)s.v=1; // 버전 없던 시절 대비
-  // 이후 버전이 생기면: if(s.v===1){...; s.v=2;}
+  if(s.v===1){s.perks={};s.pendingPerks=Math.max(0,(s.lv||1)-1);s.v=2} // v2: 특성 도입 — 이미 오른 레벨만큼 특성 선택권 지급
+  // 이후 버전이 생기면: if(s.v===2){...; s.v=3;}
   const d=newSave();for(const k in d)if(s[k]===undefined)s[k]=d[k];
   return s;
 }
@@ -79,8 +93,9 @@ function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S))}catch(e){}}
 
 let S=null; // 세이브
 // ================= 능력치 =================
-const maxHp=()=>30+S.lv*8+(S.armor.hp||0);
-const maxMp=()=>8+S.lv*2;
+const P=id=>(S&&S.perks&&S.perks[id])||0;
+const maxHp=()=>Math.round((30+S.lv*8+(S.armor.hp||0))*(1+.1*P('vital')));
+const maxMp=()=>8+S.lv*2+3*P('wick');
 const atk=()=>4+S.lv*2+S.weapon.atk;
 const def=()=>1+Math.floor(S.lv*0.8)+S.armor.def;
 const needExp=lv=>Math.round(10*Math.pow(lv,1.45));
@@ -291,6 +306,7 @@ function town(first){
     {t:'💤 쉬기',k:full?'이미 가득':'무료',dis:full,f:()=>{S.hp=maxHp();S.mp=maxMp();SFX.heal();save();town()}},
     {t:'🧪 회복약',k:'15🪙',dis:S.gold<15,f:()=>{S.gold-=15;S.potions++;SFX.item();save();town()}},
     {t:'⚒️ 대장간',k:'장비 강화',f:()=>forge()},
+    ...(S.pendingPerks>0?[{t:`✨ 특성 고르기 (${S.pendingPerks})`,cls:'main wide',f:()=>perkPick(()=>town())}]:[]),
   ]);
   showEquip();
 }
@@ -298,6 +314,7 @@ function showEquip(){
   info(`<b>장비</b><br>무기: <span class="${RAR[S.weapon.r].c}">${S.weapon.name}</span> (공격 +${S.weapon.atk})<br>
   방어구: <span class="${RAR[S.armor.r].c}">${S.armor.name}</span> (방어 +${S.armor.def}, 체력 +${S.armor.hp})<br>
   능력치: 공격 ${atk()} · 방어 ${def()} · 최대체력 ${maxHp()}<br>
+  특성: ${PERKS.filter(p=>P(p.id)).map(p=>p.ic+p.n+' '+P(p.id)).join(' · ')||'<span style="color:var(--dim)">없음 (레벨업 때 고름)</span>'}<br>
   <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 콤보 ${S.stats.bestCombo||0}</span>`);
 }
 function forge(){
@@ -312,7 +329,7 @@ function forge(){
 
 // ================= 전투 =================
 function startClimb(){G={mode:'battle',floor:S.checkpoint,combo:0};nextFloor()}
-const comboBonus=()=>Math.min(.5,.1*(G.combo||0));
+const comboBonus=()=>Math.min(.5+.15*P('combo'),.1*(G.combo||0));
 function comboUp(){G.combo=(G.combo||0)+1;if(G.combo>=2)floatText(300,90,'콤보 ×'+G.combo+'!','#ffd257',26);if(G.combo>(S.stats.bestCombo||0))S.stats.bestCombo=G.combo}
 function comboBreak(){if(G.combo>=2)floatText(300,90,'콤보 끊김','#a99fba',18);G.combo=0}
 function makeEnemy(f){
@@ -324,7 +341,7 @@ function makeEnemy(f){
   e.hp=e.maxHp;return e;
 }
 function nextFloor(){
-  enemy=makeEnemy(G.floor);G.phase='menu';G.tb=null;fx.enemyX=200;
+  enemy=makeEnemy(G.floor);G.phase='menu';G.tb=null;G.second=false;fx.enemyX=200;
   hud();info('');
   setMsg(`<b>${G.floor}층</b> — ${enemy.boss?'👑 보스 ':''}<b>${enemy.name}</b>이(가) 등불을 가로막고 있다!`);
   setTimeout(menu,400);
@@ -341,13 +358,13 @@ function startAttack(){
   if(G.phase!=='menu')return;
   const f=G.floor;
   G.phase='aim';setActs([{t:'⚔️ 탭!',k:'스페이스 / 화면 탭',cls:'main wide',f:()=>tap()}]);
-  G.tb={pos:0,dir:1,speed:.0011+Math.min(.0012,f*.00004)+(enemy.fast?.0002:0),center:.55+Math.random()*.35,good:.11,perfect:.035,hits:1,mult:[1],kind:'atk'};
+  G.tb={pos:0,dir:1,speed:.0011+Math.min(.0012,f*.00004)+(enemy.fast?.0002:0),center:.55+Math.random()*.35,good:.11,perfect:.035*(1+.25*P('eye')),hits:1,mult:[1],kind:'atk'};
   setMsg('흰 막대가 <b style="color:#ffd257">노란 칸</b>에 올 때 탭!');
 }
 function startSkill(){
   if(G.phase!=='menu'||S.mp<4)return;S.mp-=4;hud();
   G.phase='aim';setActs([{t:'🔥 탭!',k:'두 번',cls:'main wide',f:()=>tap()}]);
-  G.tb={pos:0,dir:1,speed:.0015,center:.35+Math.random()*.15,good:.1,perfect:.04,hits:2,mult:[1.1,1.1],kind:'skill',label:'두 번 탭! (1/2)',second:.7+Math.random()*.15};
+  G.tb={pos:0,dir:1,speed:.0015,center:.35+Math.random()*.15,good:.1,perfect:.04*(1+.25*P('eye')),hits:2,mult:[1.1*(1+.15*P('wick')),1.1*(1+.15*P('wick'))],kind:'skill',label:'두 번 탭! (1/2)',second:.7+Math.random()*.15};
   setMsg('등불의 불꽃을 두 번 휘두른다. 노란 칸 <b>두 개</b>를 차례로!');
 }
 function updateTiming(dt){
@@ -370,6 +387,7 @@ function judgeHit(dist){
   const base=atk()*m*tb.mult[0]*(1+(grade==='PERFECT'?comboBonus():0));
   let dmg=Math.max(1,Math.round(base-enemy.def*.6+(Math.random()*2-1)*atk()*.08));
   enemy.hp-=dmg;
+  if(grade==='PERFECT'&&P('leech')){const h=Math.max(1,Math.round(dmg*.1*P('leech')));S.hp=Math.min(maxHp(),S.hp+h);floatText(150,170,'+'+h,'#7be38a',22)}
   G.swing=1;fx.heroX=60;fx.enemyX=18;fx.enemyHit=140;
   const big=grade==='PERFECT';
   if(big){SFX.crit();fx.shake=16;fx.flash=.35;fx.stop=90+Math.min(60,(G.combo||0)*15);S.stats.perfects++;burst(440,240,'#ffd257',24);comboUp()}else comboBreak();
@@ -391,57 +409,73 @@ function usePotion(){
 function enemyTurn(){
   if(G.mode!=='battle')return;
   G.phase='enemyWind';enemy.wind=true;
-  const delay=(enemy.fast?450:650)+Math.random()*(enemy.boss?1400:1000);
+  const delay=G.second?380+Math.random()*450:(enemy.fast?450:650)+Math.random()*(enemy.boss?1400:1000);
   G.flashAt=performance.now()+delay;G.guarded=null;G.warned=false;
   G.feintAt=(enemy.feint&&Math.random()<enemy.feint&&delay>800)?G.flashAt-350-Math.random()*250:null;G.feintSnd=false;
   setActs([{t:'🛡️ 막기!',k:'‘!’ 뜨면 탭',cls:'main wide',f:()=>tap()}]);
+  if(G.second){floatText(440,110,'한 번 더!','#ff9a3c',24);setMsg('<b>'+enemy.name+'</b>의 <b style="color:#ff9a3c">연속 공격!</b> 한 번 더 막아!');return}
   setMsg('<b>'+enemy.name+'</b>의 공격! 빨간 <b style="color:#ff4040">!</b>가 뜨는 순간 탭하면 막는다. 너무 빨리 누르면 실패.'+(enemy.feint?' <b style="color:#ffd257">노란 ?는 속임수!</b>':'')+'<br><span style="color:#a99fba">퍼펙트(공격·막기)를 이어가면 콤보 보너스</span>');
 }
 function updateGuard(){
   if(G.phase!=='enemyWind')return;const now=performance.now();
   if(G.feintAt&&!G.feintSnd&&now>=G.feintAt){G.feintSnd=true;beep(330,.06,'triangle',.05)}
   if(!G.warned&&now>=G.flashAt){G.warned=true;SFX.warn()}
-  if(now>G.flashAt+380)enemyHits(null);
+  if(now>G.flashAt+380+25*P('guard'))enemyHits(null);
 }
 function guardTap(){
   const now=performance.now();const d=now-G.flashAt;
   if(d<0)return enemyHits('early');
-  if(d<=130)return enemyHits('perfect');
-  if(d<=380)return enemyHits('guard');
+  if(d<=130+25*P('guard'))return enemyHits('perfect');
+  if(d<=380+25*P('guard'))return enemyHits('guard');
 }
 function enemyHits(g){
   if(G.phase!=='enemyWind')return;G.phase='wait';enemy.wind=false;setActs([]);
   fx.enemyX=-90;
-  let dmg=Math.max(1,Math.round(enemy.atk*(1+(Math.random()*.3-.15))-def()*.5));
+  let dmg=Math.max(1,Math.round((enemy.atk*(1+(Math.random()*.3-.15))-def()*.5)*(1-.08*P('skin'))));
   let label='',col='#ff5d6c';
   if(g==='perfect')comboUp();else comboBreak();
   if(g==='perfect'){dmg=0;label='완벽 막기! 반격!';col='#ffd257';SFX.perfectGuard();fx.flash=.25;
-    const c=Math.max(1,Math.round(atk()*.6*(1+comboBonus())));fx.stop=70;setTimeout(()=>{enemy.hp-=c;fx.enemyHit=140;fx.enemyX=20;G.swing=1;floatText(440,190,c,'#ffd257',30);SFX.hit();hud();if(enemy.hp<=0)win()},250)}
+    const c=Math.max(1,Math.round(atk()*.6*(1+comboBonus())*(1+.4*P('counter'))));fx.stop=70;setTimeout(()=>{enemy.hp-=c;fx.enemyHit=140;fx.enemyX=20;G.swing=1;floatText(440,190,c,'#ffd257',30);SFX.hit();hud();if(enemy.hp<=0)win()},250)}
   else if(g==='guard'){dmg=Math.ceil(dmg*.4);label='막기!';col='#5fb4ff';SFX.guard();fx.shake=4}
   else{if(g==='early')label='너무 빨랐다!';SFX.hurt();fx.shake=12;fx.heroHit=400;dmg=Math.round(dmg*(g==='early'?1.15:1))}
   S.hp-=dmg;
   if(label)floatText(150,130,label,col,20);
   if(dmg>0)floatText(150,190,'-'+dmg,'#ff5d6c',30);
   hud();
-  setTimeout(()=>{if(G.mode!=='battle'||G.phase==='done')return;if(S.hp<=0)return lose();if(enemy.hp<=0)return;menu();setMsg('너의 차례. <b>공격</b>은 타이밍, <b>등불 일격</b>은 두 번 탭.')},g==='perfect'?700:500);
+  setTimeout(()=>{if(G.mode!=='battle'||G.phase==='done')return;if(S.hp<=0)return lose();if(enemy.hp<=0)return;
+    if(enemy.double&&!G.second&&Math.random()<enemy.double){G.second=true;return enemyTurn()}
+    G.second=false;menu();setMsg('너의 차례. <b>공격</b>은 타이밍, <b>등불 일격</b>은 두 번 탭.')},g==='perfect'?700:500);
 }
 function win(){
   if(G.phase==='done')return;G.phase='done';enemy.deadAt=performance.now();enemy.wind=false;
   SFX.win();burst(440,250,enemy.col,30);
   const f=G.floor;S.stats.wins++;
-  S.exp+=enemy.exp;S.gold+=enemy.gold;if(f>S.best)S.best=f;
+  const gold=Math.round(enemy.gold*(1+.2*P('luck')));S.exp+=enemy.exp;S.gold+=gold;if(f>S.best)S.best=f;
   if(f%5===0)S.checkpoint=f+1;
-  let lines=[`<b>${enemy.name}</b>을(를) 물리쳤다! ${f}층 등불이 다시 켜졌다 🏮`,`경험치 +${enemy.exp} · 🪙 +${enemy.gold}`];
+  let lines=[`<b>${enemy.name}</b>을(를) 물리쳤다! ${f}층 등불이 다시 켜졌다 🏮`,`경험치 +${enemy.exp} · 🪙 +${gold}`];
   // 레벨업
   let ups=0;while(S.exp>=needExp(S.lv)){S.exp-=needExp(S.lv);S.lv++;ups++}
+  S.pendingPerks=(S.pendingPerks||0)+ups;
   if(ups){S.hp=maxHp();S.mp=maxMp();setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500);
     lines.push(`<b style="color:#ffd257">레벨 업! Lv${S.lv}</b> — 공격 ${atk()} · 방어 ${def()} · 체력 ${maxHp()} (체력·마력 회복)`)}
   else{S.hp=Math.min(maxHp(),S.hp+Math.round(maxHp()*.1));S.mp=Math.min(maxMp(),S.mp+1)}
   if(f%5===0)lines.push(`<b>체크포인트!</b> 다음엔 ${f+1}층부터 시작할 수 있다.`);
   // 장비 드롭
-  const drop=(enemy.boss||Math.random()<.3)?makeItem(f,enemy.boss):null;
+  const drop=(enemy.boss||Math.random()<.3+.08*P('luck'))?makeItem(f,enemy.boss):null;
   save();
-  setTimeout(()=>{hud();setMsg(lines.join('<br>'));if(drop)offerItem(drop);else afterWin()},700);
+  setTimeout(()=>{hud();setMsg(lines.join('<br>'));const next=()=>{setMsg(lines.join('<br>'));if(drop)offerItem(drop);else afterWin()};if(S.pendingPerks>0)perkPick(next);else next()},700);
+}
+function perkPick(done){
+  const pool=PERKS.filter(p=>P(p.id)<PMAX);
+  if(!pool.length||!(S.pendingPerks>0)){S.pendingPerks=0;save();return done()}
+  const ch=[];while(ch.length<3&&pool.length)ch.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  const prevPhase=G.phase;G.phase='perk';G.perkChoices=ch;
+  info(`✨ <b>특성 고르기</b> ${S.pendingPerks>1?'(남은 선택 '+S.pendingPerks+')':''}<br><span style="color:var(--dim)">하나를 골라 영원히 강해진다. 같은 특성은 ${PMAX}단계까지.</span>`);
+  const pick=p=>{S.perks[p.id]=P(p.id)+1;S.pendingPerks--;if(p.id==='vital'||p.id==='wick'){S.hp=Math.min(maxHp(),S.hp+(p.id==='vital'?Math.round(maxHp()*.1):0));S.mp=Math.min(maxMp(),S.mp+(p.id==='wick'?3:0))}
+    SFX.lv();floatText(150,120,p.ic+' '+p.n+' '+P(p.id),'#ffd257',24);burst(150,250,'#ffd257',20);save();hud();G.phase=prevPhase;G.perkChoices=null;
+    if(S.pendingPerks>0)perkPick(done);else{info('');done()}};
+  G.perkPickFn=pick;
+  setActs(ch.map((p,i)=>({t:`${p.ic} <b>${p.n}</b> <span style="color:var(--gold)">${'★'.repeat(P(p.id)+1)}</span>`,k:`${i+1} · ${p.d}`,cls:'wide',f:()=>pick(p)})));
 }
 function afterWin(){
   info('');
@@ -486,12 +520,13 @@ document.addEventListener('keydown',e=>{
     if(G.mode==='battle'&&(G.phase==='aim'||G.phase==='enemyWind'||G.phase==='menu'))tap();
     else if(G.phase==='afterWin'){G.floor++;nextFloor()}
     return}
+  if(G.phase==='perk'&&G.perkChoices){const i=+e.key-1;if(G.perkChoices[i])G.perkPickFn(G.perkChoices[i]);return}
   if(G.mode==='battle'&&G.phase==='menu'){if(e.key==='1')startAttack();if(e.key==='2')startSkill();if(e.key==='3'&&S.potions>0&&S.hp<maxHp())usePotion()}
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&S)save()});
 
 // 테스트용 훅
-window.__game={get S(){return S},get G(){return G},get enemy(){return enemy},tap,newSave,migrate,SAVE_KEY};
+window.__game={PERKS,perkPick,get S(){return S},get G(){return G},get enemy(){return enemy},tap,newSave,migrate,SAVE_KEY};
 title();requestAnimationFrame(loop);
 </script>
 </body>
