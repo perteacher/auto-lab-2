@@ -74,8 +74,14 @@ footer{color:var(--dim);font-size:.8rem;margin:24px 0 8px;text-align:center}
       <option value="random">무작위</option>
       <option value="sparse">드문드문</option>
     </select></label>
+    <label>악기 <select id="inst">
+      <option value="box">오르골(금속 빗살)</option>
+      <option value="soft">부드러운 플럭</option>
+    </select></label>
     <label><input id="wrap" type="checkbox" checked> 양끝 이어붙이기</label>
+    <label><input id="revive" type="checkbox" checked> 다 꺼지면 새 씨앗</label>
   </div>
+  <p class="note" id="status" aria-live="polite"></p>
 
   <div class="panel">
     <h2>규칙표 — 위 세 칸(왼쪽·나·오른쪽)이 이러면, 다음 줄 나는 ▼</h2>
@@ -134,7 +140,7 @@ function next(row){
 let seed = null; // 현재 씨앗 줄 (공유 URL에 담김)
 function reset(kindOrRow){
   seed = kindOrRow instanceof Uint8Array ? kindOrRow : seedRow($('seed').value);
-  rows = [seed.slice()]; pending = [];
+  rows = [seed.slice()]; pending = []; silentShown = false; $('status').textContent = '';
   playhead = 0; updateHash(); draw();
 }
 const seedHex = r => { let v=0; for(let i=0;i<COLS;i++) v = (v<<1)|r[i]; return v.toString(16).padStart(4,'0'); };
@@ -209,17 +215,56 @@ function pluck(f, t, vol){
   o.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
   o.start(t); o2.start(t); o.stop(t+1.2); o2.stop(t+1.2);
 }
+/* 오르골 빗살: 양끝이 자유로운 금속 막대의 비조화 배음(1 : 2.76 : 5.40 : 8.93), 높은 배음일수록 빨리 사라진다 */
+const TINE = [[1,1,1.6],[2.76,.32,.45],[5.40,.12,.18],[8.93,.05,.08]];
+function tine(f, t, vol){
+  const g = ac.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.connect(master);
+  TINE.forEach(([ratio, amp, dec])=>{
+    const fr = f*ratio; if(fr > 12000) return;
+    const o = ac.createOscillator(), pg = ac.createGain();
+    o.type='sine'; o.frequency.value = fr;
+    pg.gain.setValueAtTime(0, t);
+    pg.gain.linearRampToValueAtTime(amp, t+.002);
+    pg.gain.exponentialRampToValueAtTime(.0005, t+dec);
+    o.connect(pg); pg.connect(g); o.start(t); o.stop(t+dec+.05);
+  });
+  // 빗살을 튕기는 순간의 아주 짧은 '틱'
+  if(!tine.noise){
+    const len = Math.floor(ac.sampleRate*.02), buf = ac.createBuffer(1,len,ac.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/len,4);
+    tine.noise = buf;
+  }
+  const n = ac.createBufferSource(), hp = ac.createBiquadFilter(), ng = ac.createGain();
+  n.buffer = tine.noise; hp.type='highpass'; hp.frequency.value = Math.min(9000, f*6);
+  ng.gain.value = .18; n.connect(hp); hp.connect(ng); ng.connect(g); n.start(t);
+}
+function note(f, t, vol){ ($('inst').value==='box' ? tine : pluck)(f, t, vol); }
 function sound(row, at){
   if(!ac) return;
   const on = []; for(let i=0;i<COLS;i++) if(row[i]) on.push(i);
   if(!on.length) return;
   const vol = .22/Math.sqrt(on.length), t = at ?? ac.currentTime+.01;
-  on.forEach((c,k)=>pluck(freqFor(c), t + k*0.004, vol)); // 살짝 흩뿌려 오르골 느낌
+  on.forEach((c,k)=>note(freqFor(c), t + k*0.004, vol)); // 살짝 흩뿌려 오르골 느낌
 }
 
 /* ---------- 진행 ---------- */
+/* 모든 칸이 꺼지면: 옵션에 따라 새 씨앗을 심거나, 조용해졌다고 알린다 */
+let silentShown = false;
+function evolve(prev){
+  const row = next(prev);
+  if(row.some(v=>v)){ silentShown = false; return {row}; }
+  if($('revive').checked) return {row: seedRow('sparse'), revived: true};
+  return {row, silent: true};
+}
+function showStatus(info){
+  if(info.revived) $('status').textContent = `규칙 ${rule}: 모든 칸이 꺼져서 새 씨앗을 뿌렸어요 🌱`;
+  else if(info.silent && !silentShown){ silentShown = true; $('status').textContent = `규칙 ${rule}: 모든 칸이 꺼졌어요. 윗줄을 눌러 칸을 켜거나 '다 꺼지면 새 씨앗'을 켜 보세요.`; }
+}
 function stepOnce(){
-  rows.push(next(rows[rows.length-1]));
+  const info = evolve(rows[rows.length-1]); showStatus(info);
+  rows.push(info.row);
   if(rows.length>400) rows.splice(0, rows.length-400);
   sound(rows[rows.length-1]);
   draw();
@@ -231,15 +276,15 @@ const LOOKAHEAD = .12;
 function schedule(){
   while(nextTime < ac.currentTime + LOOKAHEAD){
     const last = pending.length ? pending[pending.length-1].row : rows[rows.length-1];
-    const row = next(last);
-    pending.push({row, t:nextTime}); sound(row, nextTime);
+    const info = evolve(last), row = info.row;
+    pending.push({row, t:nextTime, info}); sound(row, nextTime);
     nextTime += interval()/1000;
   }
 }
 function flush(){
   let moved = false;
   while(pending.length && pending[0].t <= ac.currentTime){
-    rows.push(pending.shift().row); moved = true;
+    const p = pending.shift(); rows.push(p.row); showStatus(p.info); moved = true;
   }
   if(moved){ if(rows.length>400) rows.splice(0, rows.length-400); draw(); }
   if(playing) raf = requestAnimationFrame(flush);
@@ -314,7 +359,7 @@ cv.addEventListener('pointerdown', e=>{
     if(!cur.some(v=>v)) return;
     reset(cur); ensureAudio(); // 현재 줄을 고친 것이 새 씨앗
     if(playing && ac) nextTime = ac.currentTime + interval()/1000;
-    if(rows[0][x] && ac) pluck(freqFor(x), ac.currentTime+.01, .15);
+    if(rows[0][x] && ac) note(freqFor(x), ac.currentTime+.01, .15);
     draw();
   }
 });
