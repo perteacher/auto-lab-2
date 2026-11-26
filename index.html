@@ -51,15 +51,23 @@ footer a{color:var(--dim)}
 const SAVE_KEY='lanternTower.save';
 const SAVE_VER=2;
 const ENEMIES=[
-  {id:'slime',name:'그을음 슬라임',hp:22,atk:6,def:0,exp:6,gold:5,col:'#5b5670',shape:'slime'},
-  {id:'bat',name:'촛농 박쥐',hp:16,atk:8,def:0,exp:7,gold:6,col:'#c9b48a',shape:'bat',fast:true,double:.5},
-  {id:'armor',name:'녹슨 빈 갑주',hp:34,atk:7,def:3,exp:9,gold:8,col:'#8a6a4f',shape:'armor'},
-  {id:'wisp',name:'심지 도깨비불',hp:24,atk:9,def:1,exp:10,gold:9,col:'#7fd1ff',shape:'wisp',fast:true,feint:.6},
+  {id:'slime',name:'그을음 슬라임',hp:22,atk:6,def:0,exp:6,gold:5,col:'#5b5670',shape:'slime',fl:[1,5]},
+  {id:'bat',name:'촛농 박쥐',hp:16,atk:8,def:0,exp:7,gold:6,col:'#c9b48a',shape:'bat',fast:true,double:.5,fl:[2,7]},
+  {id:'armor',name:'녹슨 빈 갑주',hp:34,atk:7,def:3,exp:9,gold:8,col:'#8a6a4f',shape:'armor',fl:[3,8]},
+  {id:'wisp',name:'심지 도깨비불',hp:24,atk:9,def:1,exp:10,gold:9,col:'#7fd1ff',shape:'wisp',fast:true,feint:.6,fl:[4,9]},
+  {id:'book',name:'날뛰는 마도서',hp:30,atk:9,def:1,exp:12,gold:11,col:'#8c3b2e',shape:'book',fast:true,feint:.45,double:.4,fl:[6,14]},
+  {id:'ink',name:'먹물 그림자',hp:40,atk:10,def:2,exp:14,gold:12,col:'#3b3270',shape:'ink',heavy:1,fl:[7,15]},
 ];
 const BOSSES=[
   {id:'keeper',name:'그림자 등지기',hp:80,atk:10,def:3,exp:40,gold:40,col:'#3d2f5c',shape:'boss',feint:.4},
+  {id:'sage',name:'침묵의 사서',hp:105,atk:12,def:3,exp:65,gold:65,col:'#4b3a2a',shape:'sage',feint:.5,double:.4},
   {id:'moth',name:'잿빛 큰나방',hp:95,atk:12,def:2,exp:55,gold:55,col:'#8f8478',shape:'moth',fast:true,feint:.5,double:.35},
 ];
+const REGIONS=[
+  {n:'등불탑 아랫층',hue:f=>260-f*6,deco:'brick',intro:'차가운 돌벽, 꺼진 등불들. 탑의 첫 구간이다.'},
+  {n:'그을린 서고',hue:()=>28,deco:'shelf',intro:'타다 만 책 냄새. 책들이 스스로 펄럭이며 길을 막는다.'},
+];
+const regionOf=f=>REGIONS[Math.min(REGIONS.length-1,Math.floor((Math.max(1,f)-1)/5))];
 const RAR=[{n:'평범한',c:'r1',m:1},{n:'단단한',c:'r2',m:1.35},{n:'빛나는',c:'r3',m:1.8},{n:'전설의',c:'r4',m:2.5}];
 const WNAMES=['막대','단검','장검','망치','창'];
 const ANAMES=['천옷','가죽옷','사슬옷','판금'];
@@ -135,12 +143,15 @@ let G={mode:'title'}; // 게임 상태
 let enemy=null;
 
 function drawBg(t){
-  const f=G.floor||1;const hue=(260-f*6)%360;
+  const f=G.floor||1;const RG=regionOf(f);const hue=((RG.hue(f)%360)+360)%360;
   const g=cx.createLinearGradient(0,0,0,H);g.addColorStop(0,`hsl(${hue},30%,12%)`);g.addColorStop(1,`hsl(${hue},25%,6%)`);
   cx.fillStyle=g;cx.fillRect(0,0,W,H);
   // 벽돌
   cx.strokeStyle=`hsla(${hue},30%,30%,.25)`;cx.lineWidth=1;
-  for(let y=0;y<H-90;y+=26){for(let x=(y/26)%2?-20:0;x<W;x+=56){cx.strokeRect(x,y,56,26)}}
+  if(RG.deco==='shelf'){ // 책장
+    for(let y=30;y<H-110;y+=62){cx.fillStyle=`hsla(${hue},35%,18%,.9)`;cx.fillRect(0,y+50,W,8);
+      for(let x=4,i=0;x<W;i++){const w=8+((i*7+y)%9),h=30+((i*13+y)%18);cx.fillStyle=`hsla(${(hue+i*37)%360},30%,${18+(i*5)%14}%,.85)`;cx.fillRect(x,y+50-h,w,h);x+=w+2+((i*3)%5===0?14:0)}}
+  }else for(let y=0;y<H-90;y+=26){for(let x=(y/26)%2?-20:0;x<W;x+=56){cx.strokeRect(x,y,56,26)}}
   // 바닥
   cx.fillStyle=`hsl(${hue},20%,14%)`;cx.fillRect(0,H-90,W,90);
   cx.fillStyle=`hsla(${hue},40%,40%,.25)`;cx.fillRect(0,H-90,W,3);
@@ -197,11 +208,21 @@ function drawEnemy(t){
       cx.fillStyle=rg;cx.beginPath();cx.arc(0,0,44,0,7);cx.fill();break}
     case 'boss':cx.beginPath();cx.moveTo(-34,0);cx.lineTo(-26,-96+b);cx.lineTo(0,-112+b);cx.lineTo(26,-96+b);cx.lineTo(34,0);cx.closePath();cx.fill();
       cx.fillStyle=hitW?'#fff':'#ffcf6e';cx.fillRect(28,-70+b,6,40);cx.beginPath();cx.arc(31,-74+b,9,0,7);cx.fill();break;
+    case 'book':{const fl=Math.sin(t/(e.wind?50:120))*.6;cx.translate(0,-72+b*2);
+      for(const sd of[-1,1]){cx.save();cx.scale(sd,1);cx.rotate(-fl*.5);cx.fillStyle=col;cx.fillRect(0,-26,40,52);cx.fillStyle=hitW?'#fff':'#efe3c8';cx.fillRect(3,-23,34,46);
+        cx.fillStyle='rgba(60,40,30,.5)';for(let i=0;i<5;i++)cx.fillRect(8,-16+i*8,24-(i%2)*8,2);cx.restore()}
+      cx.fillStyle=col;cx.fillRect(-3,-27,6,54);break}
+    case 'ink':{cx.beginPath();cx.moveTo(-38,0);for(let i=0;i<=8;i++){const a=Math.PI*(1-i/8);const r=42+Math.sin(t/180+i*1.7)*6;cx.lineTo(Math.cos(a)*r,-Math.sin(a)*r*1.4-10+b)}cx.lineTo(38,0);cx.closePath();cx.fill();
+      for(let i=0;i<3;i++){const dx=-20+i*20,dy=(t/8+i*40)%40;cx.globalAlpha=a*(1-dy/40);cx.beginPath();cx.arc(dx,-4+dy*.3,3,0,7);cx.fill()}cx.globalAlpha=a;break}
+    case 'sage':cx.beginPath();cx.moveTo(-36,0);cx.lineTo(-22,-92+b);cx.quadraticCurveTo(0,-128+b,22,-92+b);cx.lineTo(36,0);cx.closePath();cx.fill();
+      cx.fillStyle='#120e18';cx.beginPath();cx.arc(0,-90+b,15,0,7);cx.fill();
+      cx.save();cx.translate(-30,-52+b);cx.rotate(-.2);cx.fillStyle=hitW?'#fff':'#8c3b2e';cx.fillRect(-14,-10,28,20);cx.fillStyle='#efe3c8';cx.fillRect(-12,-8,24,16);cx.restore();break;
     case 'moth':{const w=Math.sin(t/110)*.25;cx.translate(0,-72+b*2);for(const s of[-1,1]){cx.save();cx.scale(s,1);cx.rotate(w);cx.beginPath();cx.ellipse(-30,-6,34,22,-.4,0,7);cx.fill();cx.beginPath();cx.ellipse(-22,18,20,14,.4,0,7);cx.fill();cx.restore()}
       cx.fillStyle=hitW?'#fff':'#5e554c';cx.beginPath();cx.ellipse(0,4,8,24,0,0,7);cx.fill();break}
   }
   // 눈
-  if(e.shape!=='wisp'&&e.shape!=='armor'){const ey=e.shape==='slime'?-30+b:e.shape==='bat'?4:e.shape==='moth'?-6:-80+b;
+  if(e.shape==='book'){cx.fillStyle=e.wind?'#ff4040':'#ffe9a8';cx.fillRect(-11,-110+b*2,6,6);cx.fillRect(5,-110+b*2,6,6)}
+  else if(e.shape!=='wisp'&&e.shape!=='armor'){const ey=e.shape==='slime'?-30+b:e.shape==='bat'?4:e.shape==='moth'?-6:e.shape==='ink'?-44+b:e.shape==='sage'?-92+b:-80+b;
     cx.fillStyle=e.wind?'#ff4040':'#ffe9a8';cx.fillRect(-11,ey,6,6);cx.fillRect(5,ey,6,6)}
   else if(e.shape==='wisp'){cx.fillStyle=e.wind?'#ff4040':'#123';cx.fillRect(-10,-6,6,6);cx.fillRect(4,-6,6,6)}
   else{cx.fillStyle=e.wind?'#ff4040':'#ffb347';cx.fillRect(-8,-85+b*.3,4,3);cx.fillRect(4,-85+b*.3,4,3)}
@@ -334,8 +355,10 @@ function comboUp(){G.combo=(G.combo||0)+1;if(G.combo>=2)floatText(300,90,'콤보
 function comboBreak(){if(G.combo>=2)floatText(300,90,'콤보 끊김','#a99fba',18);G.combo=0}
 function makeEnemy(f){
   const boss=f%5===0;
-  const base=boss?BOSSES[(f/5-1)%BOSSES.length]:ENEMIES[Math.floor(Math.random()*Math.min(ENEMIES.length,1+Math.floor((f+1)/2)))];
-  const k=1+.2*(f-1),ka=1+.13*(f-1);
+  let pool=ENEMIES.filter(e=>f>=e.fl[0]&&f<=e.fl[1]);if(!pool.length)pool=ENEMIES.slice(-3);
+  const base=boss?BOSSES[(f/5-1)%BOSSES.length]:pool[Math.floor(Math.random()*pool.length)];
+  const ex=Math.max(0,f-5); // 6층부터 조금 더 가파르게
+  const k=1+.2*(f-1)+.05*ex,ka=1+.13*(f-1)+.04*ex;
   const e={...base,boss,maxHp:Math.round(base.hp*k),atk:Math.round(base.atk*ka),def:Math.round(base.def*(1+.1*(f-1))),
     exp:Math.round(base.exp*(1+.25*(f-1))),gold:Math.round(base.gold*(1+.2*(f-1)))};
   e.hp=e.maxHp;return e;
@@ -343,7 +366,9 @@ function makeEnemy(f){
 function nextFloor(){
   enemy=makeEnemy(G.floor);G.phase='menu';G.tb=null;G.second=false;fx.enemyX=200;
   hud();info('');
-  setMsg(`<b>${G.floor}층</b> — ${enemy.boss?'👑 보스 ':''}<b>${enemy.name}</b>이(가) 등불을 가로막고 있다!`);
+  const RG=regionOf(G.floor),newReg=(G.floor-1)%5===0;
+  if(newReg){floatText(300,80,'— '+RG.n+' —','#ffcf6e',30);SFX.lv()}
+  setMsg((newReg?`<b style="color:#ffcf6e">📜 ${RG.n}</b> — ${RG.intro}<br>`:'')+`<b>${G.floor}층</b> — ${enemy.boss?'👑 보스 ':''}<b>${enemy.name}</b>이(가) 등불을 가로막고 있다!`);
   setTimeout(menu,400);
 }
 function menu(){
@@ -409,11 +434,12 @@ function usePotion(){
 function enemyTurn(){
   if(G.mode!=='battle')return;
   G.phase='enemyWind';enemy.wind=true;
-  const delay=G.second?380+Math.random()*450:(enemy.fast?450:650)+Math.random()*(enemy.boss?1400:1000);
+  const delay=G.second?380+Math.random()*450:(enemy.heavy?1000:enemy.fast?450:650)+Math.random()*(enemy.boss?1400:1000);
   G.flashAt=performance.now()+delay;G.guarded=null;G.warned=false;
   G.feintAt=(enemy.feint&&Math.random()<enemy.feint&&delay>800)?G.flashAt-350-Math.random()*250:null;G.feintSnd=false;
   setActs([{t:'🛡️ 막기!',k:'‘!’ 뜨면 탭',cls:'main wide',f:()=>tap()}]);
   if(G.second){floatText(440,110,'한 번 더!','#ff9a3c',24);setMsg('<b>'+enemy.name+'</b>의 <b style="color:#ff9a3c">연속 공격!</b> 한 번 더 막아!');return}
+  if(enemy.heavy)floatText(440,110,'묵직한 공격…','#a99fba',20);
   setMsg('<b>'+enemy.name+'</b>의 공격! 빨간 <b style="color:#ff4040">!</b>가 뜨는 순간 탭하면 막는다. 너무 빨리 누르면 실패.'+(enemy.feint?' <b style="color:#ffd257">노란 ?는 속임수!</b>':'')+'<br><span style="color:#a99fba">퍼펙트(공격·막기)를 이어가면 콤보 보너스</span>');
 }
 function updateGuard(){
@@ -431,7 +457,7 @@ function guardTap(){
 function enemyHits(g){
   if(G.phase!=='enemyWind')return;G.phase='wait';enemy.wind=false;setActs([]);
   fx.enemyX=-90;
-  let dmg=Math.max(1,Math.round((enemy.atk*(1+(Math.random()*.3-.15))-def()*.5)*(1-.08*P('skin'))));
+  let dmg=Math.max(1,Math.round((enemy.atk*(enemy.heavy?1.4:1)*(1+(Math.random()*.3-.15))-def()*.5)*(1-.08*P('skin'))));
   let label='',col='#ff5d6c';
   if(g==='perfect')comboUp();else comboBreak();
   if(g==='perfect'){dmg=0;label='완벽 막기! 반격!';col='#ffd257';SFX.perfectGuard();fx.flash=.25;
