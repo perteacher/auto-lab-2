@@ -92,6 +92,13 @@ const INTENTS={
   cocoon:{ic:'🐛',n:'고치 짓기',d:'이번 판 피해를 고치가 막고(×0.3), 끝나면 체력 25% 회복! 🔥불로 태우면 막지도 회복하지도 못한다',c:'#e8e0c8'},
 };
 // 파티: 나(등불지기) + 여울(치유사, 2층 뒤 합류) + 바위(방패꾼, 5층 보스 뒤 합류)
+// 동료 합류 장면 대사 (speaker: hero/yeoul/bawi)
+const JOIN_TALK={
+  yeoul:[['yeoul','저기…! 등불 든 분 맞죠? 계단에서 길을 잃었어요.'],['hero','위로 올라가는 중이야. 그림자가 많은데, 괜찮겠어?'],
+    ['yeoul','다치면 제가 물로 고쳐 드릴게요. 대신… 무서운 건 앞에서 막아 주세요!']],
+  bawi:[['bawi','그 그림자 등지기를 네가 쓰러뜨렸다고? 그 쬐끄만 등불로?'],['yeoul','저희 둘이 같이 했어요!'],
+    ['bawi','하하! 좋아, 앞은 내가 막지. 대신 맛있는 거 생기면 나눠 먹는 거다.'],['hero','(든든한 방패가 생겼다. 더 높이 올라갈 수 있겠어.)']],
+};
 const MEMBERS={
   hero:{name:'나',full:'등불지기',icon:'🏮'},
   yeoul:{name:'여울',full:'치유사 여울',icon:'💧',joinAt:2,joinMsg:'"계단에서 길을 잃었어요… 같이 가도 될까요? 다치면 제가 고쳐 드릴게요."'},
@@ -393,7 +400,7 @@ function render(t){
   for(const f of fx.texts){f.y-=1.1;f.life-=.018;cx.globalAlpha=Math.max(0,f.life);cx.font=`bold ${f.size}px sans-serif`;cx.textAlign='center';
     cx.lineWidth=5;cx.strokeStyle='#000';cx.strokeText(f.t,f.x,f.y);cx.fillStyle=f.c;cx.fillText(f.t,f.x,f.y)}
   fx.texts=fx.texts.filter(f=>f.life>0);cx.globalAlpha=1;
-  drawLvCard(t);
+  drawJoin(t);drawLvCard(t);
   if(fx.flash>0){cx.fillStyle=`rgba(255,255,255,${fx.flash})`;cx.fillRect(0,0,W,H);fx.flash=Math.max(0,fx.flash-.06)}
   cx.restore();
 }
@@ -469,6 +476,7 @@ function town(first){
     {t:'💤 쉬기',k:full?'이미 가득':'무료',dis:full,f:()=>{restoreAll();SFX.heal();save();town()}},
     {t:'🧪 회복약',k:'15🪙',dis:S.gold<15,f:()=>{S.gold-=15;S.potions++;SFX.item();save();town()}},
     {t:'⚒️ 대장간',k:'장비 강화',f:()=>forge()},
+    {t:'⏩ 전투 속도',k:spd().n,f:()=>{S.opt=S.opt||{};S.opt.speed=(((S.opt.speed)||0)+1)%SPEEDS.length;SFX.item();save();town()}},
     ...(S.pendingPerks>0?[{t:`✨ 특성 고르기 (${S.pendingPerks})`,cls:'main wide',f:()=>perkPick(()=>town())}]:[]),
   ]);
   showEquip();
@@ -493,7 +501,9 @@ function forge(){
 
 // ================= 전투 (클래식 커맨드 턴제) =================
 // 한 판(라운드) = ① 적들의 의도가 보인다 ② 파티원마다 명령을 고른다 ③ 속도 순서대로 모두 행동한다.
-const T=ms=>ms*(window.__fast||1); // 테스트 때 연출 시간을 줄이는 배율
+const SPEEDS=[{n:'보통',m:1},{n:'빠르게',m:.6},{n:'아주 빠르게',m:.35}];
+const spd=()=>SPEEDS[(S&&S.opt&&S.opt.speed)||0];
+const T=ms=>ms*(window.__fast||1)*spd().m; // 연출 시간 배율(쉼터의 '전투 속도' 설정 × 테스트용 배율)
 function later(fn,ms){setTimeout(()=>{if(G.mode==='battle'&&G.phase!=='done')fn()},T(ms))}
 const liveFoes=()=>foes.filter(e=>e.hp>0);
 function startClimb(){G={mode:'battle',floor:S.checkpoint};nextFloor()}
@@ -718,15 +728,50 @@ function win(){
   const joined=checkJoin();if(joined)lines.push(joined);
   const drop=(foes.some(e=>e.boss)||Math.random()<.3+.08*P('luck'))?makeItem(f,foes.some(e=>e.boss)):null;
   save();
-  setTimeout(()=>{hud();setMsg(lines.join('<br>'));const next=()=>{setMsg(lines.join('<br>'));if(drop)offerItem(drop);else afterWin()};if(S.pendingPerks>0)perkPick(next);else next()},T(700));
+  setTimeout(()=>{hud();setMsg(lines.join('<br>'));const next0=()=>{setMsg(lines.join('<br>'));if(drop)offerItem(drop);else afterWin()};const jid=G.joinId;G.joinId=null;
+    const next=jid?()=>{info('');joinScene(jid,next0)}:next0;if(S.pendingPerks>0)perkPick(next);else next()},T(700));
 }
 // 동료 합류: 2층을 지나면 여울, 5층 보스를 넘으면 바위
 function checkJoin(){
   for(const id of ['yeoul','bawi']){const M=MEMBERS[id],p=S.party[id];
     if(!p.joined&&S.best>=M.joinAt){p.joined=true;p.hp=ST[id].hp();p.mp=ST[id].mp();SFX.lv();
       const q=POS[id];setTimeout(()=>{floatText(q[0],q[1]-120,M.icon+' 합류!','#7be38a',26);burst(q[0],q[1]-50,'#7be38a',24)},300);
-      return `<b style="color:#7be38a">${M.icon} ${M.full}이(가) 동료가 되었다!</b><br><span style="color:var(--dim)">${M.joinMsg}</span>`}}
+      G.joinId=id;
+      return `<b style="color:#7be38a">${M.icon} ${M.full}이(가) 동료가 되었다!</b>`}}
   return '';
+}
+// 합류 장면: 새 동료를 크게 보여 주고 대사를 한 줄씩 넘긴다
+function joinScene(id,done){
+  const lines=JOIN_TALK[id];let i=0;G.phase='join';
+  const show=()=>{G.join={id,i,t0:performance.now(),line:lines[i]};SFX.item();
+    const sp=lines[i][0];setMsg(`<b style="color:#bfe3ff">${MEMBERS[sp].name}</b>: ${lines[i][1]}`);
+    const lastL=i===lines.length-1;
+    setActs([{t:lastL?`🤝 함께 가자!`:'▶ 다음',k:'스페이스',cls:'main wide',f:()=>{if(G.phase!=='join')return;
+      if(!lastL){i++;show();return}
+      G.join=null;G.phase='done';SFX.lv();const q=POS[id];floatText(q[0],q[1]-120,MEMBERS[id].icon+' 합류!','#7be38a',26);burst(q[0],q[1]-50,'#7be38a',24);hud();done()}}])};
+  show();
+}
+function drawJoin(t){
+  const J=G.join;if(!J)return;const age=t-J.t0,id=J.id,M=MEMBERS[id];
+  cx.save();cx.fillStyle='rgba(10,8,16,.9)';cx.fillRect(0,0,W,H);
+  const rg=cx.createRadialGradient(W/2,230,10,W/2,230,200);rg.addColorStop(0,id==='yeoul'?'rgba(120,210,255,.3)':'rgba(220,180,130,.3)');rg.addColorStop(1,'rgba(0,0,0,0)');cx.fillStyle=rg;cx.fillRect(0,0,W,H);
+  cx.textAlign='center';cx.font='bold 22px sans-serif';cx.lineWidth=5;cx.strokeStyle='#000';
+  const head='✦ 새 동료 · '+M.full+' ✦';cx.strokeText(head,W/2,40);cx.fillStyle='#7be38a';cx.fillText(head,W/2,40);
+  // 인물: 말하는 사람이 앞으로 살짝 나오고 밝아진다
+  const who=[id,'hero'];if(id==='bawi')who.splice(1,0,'yeoul');
+  const xs=who.length===2?[380,200]:[400,290,170];
+  who.forEach((w,k)=>{const sp=J.line[0]===w,sc=(w===id?1.7:1.3)*(sp?1.04:1);
+    cx.save();cx.globalAlpha=sp?1:.55;cx.translate(xs[k],330);cx.scale(sc,sc);
+    if(w==='hero')drawHero(t,0,0,0);else if(w==='yeoul')drawYeoul(t,0,0,0);else drawBawi(t,0,0,0);cx.restore()});
+  // 말풍선
+  const sp=J.line[0],k=who.indexOf(sp),bx=Math.min(W-150,Math.max(150,xs[k])),txt=J.line[1],n=Math.min(txt.length,Math.floor(age/30));
+  const shown=txt.slice(0,n);cx.font='16px sans-serif';
+  const rows=[];let cur='';for(const ch of shown){if(cx.measureText(cur+ch).width>250){rows.push(cur);cur=ch}else cur+=ch}rows.push(cur);
+  const bh=16+rows.length*22,by=78;
+  cx.fillStyle='rgba(250,244,230,.95)';cx.beginPath();cx.roundRect?cx.roundRect(bx-140,by,280,bh,10):cx.rect(bx-140,by,280,bh);cx.fill();
+  cx.beginPath();cx.moveTo(bx-8,by+bh);cx.lineTo(bx+8,by+bh);cx.lineTo(bx,by+bh+12);cx.fill();
+  cx.fillStyle='#2a2238';cx.textAlign='left';rows.forEach((r,j)=>cx.fillText(r,bx-128,by+24+j*22));
+  cx.restore();
 }
 function perkPick(done){
   const pool=PERKS.filter(p=>P(p.id)<PMAX);
@@ -854,7 +899,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&S)save()});
 
 // 테스트용 훅
-window.__game={floorEvent,goNext,get curActs(){return curActs},PERKS,perkPick,get S(){return S},get G(){return G},get foes(){return foes},newSave,migrate,SAVE_KEY};
+window.__game={floorEvent,goNext,joinScene,get curActs(){return curActs},PERKS,perkPick,get S(){return S},get G(){return G},get foes(){return foes},newSave,migrate,SAVE_KEY};
 title();requestAnimationFrame(loop);
 </script>
 </body>
