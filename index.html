@@ -54,7 +54,7 @@ footer a{color:var(--dim)}
 const W=600,H=400;
 // ================= 데이터 =================
 const SAVE_KEY='lanternTower.save';
-const SAVE_VER=3;
+const SAVE_VER=4;
 const ENEMIES=[
   {id:'slime',name:'그을음 슬라임',hp:22,atk:6,def:0,exp:6,gold:5,col:'#5b5670',shape:'slime',fl:[1,5],ai:['atk','atk','grow'],weak:'fire'},
   {id:'bat',name:'촛농 박쥐',hp:16,atk:8,def:0,exp:7,gold:6,col:'#c9b48a',shape:'bat',fast:true,double:.5,fl:[2,7],ai:['atk','hide']},
@@ -105,10 +105,17 @@ const MEMBERS={
   bawi:{name:'바위',full:'방패꾼 바위',icon:'🪨',joinAt:5,joinMsg:'"그 그림자 등지기를 쓰러뜨렸다고? 좋아, 앞은 내가 막지."'},
 };
 const vit=()=>1+.1*P('vital');
+// 장비: 나는 S.weapon/S.armor, 동료는 S.party[id].weapon/armor. 무기는 주인이 정해져 있고(검·지팡이·방패), 방어구는 누구나.
+const NOGEAR={atk:0,def:0,hp:0,r:0,name:'-'};
+const gear=(id,slot)=>(id==='hero'?S[slot]:(S.party&&S.party[id]&&S.party[id][slot]))||NOGEAR;
+const GW=id=>gear(id,'weapon'),GA=id=>gear(id,'armor');
+const WKIND={hero:{k:'무기',stat:'공격'},yeoul:{k:'지팡이',stat:'마력'},bawi:{k:'방패',stat:'공격·방어'}};
+function wDesc(id,p){return id==='yeoul'?`마력 +${p}, 공격 +${Math.round(p*.3)}`:id==='bawi'?`공격 +${Math.round(p*.7)}, 방어 +${Math.round(p*.4)}`:`공격 +${p}`}
+const aScore=a=>a.def*4+a.hp;
 const ST={
   hero:{hp:()=>maxHp(),mp:()=>maxMp(),atk:()=>atk(),def:()=>def(),spd:()=>10+S.lv*.5,mag:()=>0},
-  yeoul:{hp:()=>Math.round((24+S.lv*6)*vit()),mp:()=>10+Math.floor(S.lv*2.5),atk:()=>Math.round(2+S.lv*1.2),def:()=>Math.round(1+S.lv*.6),spd:()=>9+S.lv*.45,mag:()=>5+S.lv*2},
-  bawi:{hp:()=>Math.round((44+S.lv*10)*vit()),mp:()=>5+S.lv,atk:()=>Math.round(3+S.lv*1.6),def:()=>Math.round(3+S.lv*1.1),spd:()=>6+S.lv*.3,mag:()=>0},
+  yeoul:{hp:()=>Math.round((24+S.lv*6+GA('yeoul').hp)*vit()),mp:()=>10+Math.floor(S.lv*2.5),atk:()=>Math.round(2+S.lv*1.2+GW('yeoul').atk*.3),def:()=>Math.round(1+S.lv*.6)+GA('yeoul').def,spd:()=>9+S.lv*.45,mag:()=>5+S.lv*2+GW('yeoul').atk},
+  bawi:{hp:()=>Math.round((44+S.lv*10+GA('bawi').hp)*vit()),mp:()=>5+S.lv,atk:()=>Math.round(3+S.lv*1.6+GW('bawi').atk*.7),def:()=>Math.round(3+S.lv*1.1+GW('bawi').atk*.4)+GA('bawi').def,spd:()=>6+S.lv*.3,mag:()=>0},
 };
 const SK={
   hero:[{id:'fire1',ic:'🔥',n:'등불 일격',mp:4,tgt:'foe',el:'fire'},{id:'fire2',ic:'🌪️',n:'불꽃 바람',mp:7,tgt:'all',el:'fire',lv:4}],
@@ -129,7 +136,11 @@ const REGIONS=[
 ];
 const regionOf=f=>REGIONS[Math.min(REGIONS.length-1,Math.floor((Math.max(1,f)-1)/5))];
 const RAR=[{n:'평범한',c:'r1',m:1},{n:'단단한',c:'r2',m:1.35},{n:'빛나는',c:'r3',m:1.8},{n:'전설의',c:'r4',m:2.5}];
+const RCOL=['#bbb','#7be38a','#5fb4ff','#d28bff'];
 const WNAMES=['막대','단검','장검','망치','창'];
+const STAFFN=['나뭇가지 지팡이','참나무 지팡이','물방울 지팡이','달빛 지팡이','샘물 지팡이'];
+const SHIELDN=['나무 방패','쇠테 방패','강철 방패','종루 방패','성채 방패'];
+const WN={hero:WNAMES,yeoul:STAFFN,bawi:SHIELDN};
 const ANAMES=['천옷','가죽옷','사슬옷','판금'];
 // 특성: 레벨업마다 3개 중 1개 고르기(각각 최대 3단계)
 const PERKS=[
@@ -146,15 +157,20 @@ const PERKS=[
 const PMAX=3;
 
 // ================= 저장 =================
+function starterGear(id,best){const p=Math.max(1,Math.round(1+best*.4));
+  return{weapon:{name:'평범한 '+WN[id][0],atk:p,r:0},armor:{name:'평범한 천옷',def:Math.round(best*.15),hp:Math.round(best*.8),r:0}}}
 function newSave(){return{v:SAVE_VER,lv:1,exp:0,gold:20,hp:null,mp:null,potions:2,best:0,checkpoint:1,
-  weapon:{name:'평범한 막대',atk:1,r:0},armor:{name:'평범한 천옷',def:0,hp:0,r:0},stats:{wins:0,deaths:0,perfects:0},perks:{},pendingPerks:0,party:{yeoul:{joined:false,hp:null,mp:null},bawi:{joined:false,hp:null,mp:null}},created:Date.now()};}
+  weapon:{name:'평범한 막대',atk:1,r:0},armor:{name:'평범한 천옷',def:0,hp:0,r:0},stats:{wins:0,deaths:0,perfects:0},perks:{},pendingPerks:0,party:{yeoul:{joined:false,hp:null,mp:null,...starterGear('yeoul',0)},bawi:{joined:false,hp:null,mp:null,...starterGear('bawi',0)}},created:Date.now()};}
 function migrate(s){
   if(!s||typeof s!=='object')return null;
   if(!s.v)s.v=1; // 버전 없던 시절 대비
   if(s.v===1){s.perks={};s.pendingPerks=Math.max(0,(s.lv||1)-1);s.v=2} // v2: 특성 도입 — 이미 오른 레벨만큼 특성 선택권 지급
   if(s.v===2){ // v3: 커맨드 턴제 + 동료. 이미 지나온 층만큼 동료가 합류한 상태로
     s.party={yeoul:{joined:(s.best||0)>=2,hp:null,mp:null},bawi:{joined:(s.best||0)>=5,hp:null,mp:null}};s.v=3}
-  // 이후 버전이 생기면: if(s.v===3){...; s.v=4;}
+  if(s.v===3){ // v4: 동료 장비. 지나온 층만큼 동료에게 기본 장비를 맞춰 줌(옛 세이브에서도 동료가 약하지 않게)
+    s.party=s.party||{};['yeoul','bawi'].forEach(id=>{const p=s.party[id]=s.party[id]||{joined:false,hp:null,mp:null};const g=starterGear(id,s.best||0);if(!p.weapon)p.weapon=g.weapon;if(!p.armor)p.armor=g.armor});
+    s.gearNews=true;s.v=4}
+  // 이후 버전이 생기면: if(s.v===4){...; s.v=5;}
   const d=newSave();for(const k in d)if(s[k]===undefined)s[k]=d[k];
   return s;
 }
@@ -275,7 +291,7 @@ function drawYeoul(t,x,y,sw){const b=Math.sin(t/330+1)*2;cx.save();cx.translate(
   cx.fillStyle='#222';cx.fillRect(4,-68+b,3,3);
   cx.save();cx.translate(16,-20+b);cx.rotate(sw?-.6*sw:0);cx.fillStyle='#8a6a4a';cx.fillRect(-2,-60,4,64); // 지팡이
   const rg=cx.createRadialGradient(0,-64,1,0,-64,16);rg.addColorStop(0,'rgba(190,240,255,.95)');rg.addColorStop(1,'rgba(120,200,255,0)');cx.fillStyle=rg;cx.fillRect(-18,-82,36,36);
-  cx.fillStyle='#8fdcff';cx.beginPath();cx.moveTo(0,-74);cx.quadraticCurveTo(7,-62,0,-58);cx.quadraticCurveTo(-7,-62,0,-74);cx.fill();cx.restore();
+  cx.fillStyle=S&&GW('yeoul').r?RCOL[GW('yeoul').r]:'#8fdcff';cx.beginPath();cx.moveTo(0,-74);cx.quadraticCurveTo(7,-62,0,-58);cx.quadraticCurveTo(-7,-62,0,-74);cx.fill();cx.restore();
   cx.restore()}
 function drawBawi(t,x,y,sw){const b=Math.sin(t/420+2)*1.5;cx.save();cx.translate(x,y);
   cx.fillStyle='rgba(0,0,0,.35)';cx.beginPath();cx.ellipse(0,0,34,8,0,0,7);cx.fill();
@@ -285,7 +301,7 @@ function drawBawi(t,x,y,sw){const b=Math.sin(t/420+2)*1.5;cx.save();cx.translate
   cx.fillStyle='#8f929c';cx.beginPath();cx.arc(0,-78+b,15,Math.PI,0);cx.fill();cx.fillRect(-15,-78+b,30,4); // 투구
   cx.fillStyle='#222';cx.fillRect(4,-74+b,3,3);cx.fillStyle='#6b3f2a';cx.fillRect(-6,-66+b,12,3); // 수염
   cx.save();cx.translate(22+(sw||0)*14,-40+b);cx.fillStyle='#8a5a32';cx.beginPath();cx.ellipse(0,0,15,26,0,0,7);cx.fill(); // 둥근 방패
-  cx.strokeStyle='#d9b38a';cx.lineWidth=3;cx.stroke();cx.fillStyle='#d9b38a';cx.beginPath();cx.arc(0,0,5,0,7);cx.fill();cx.lineWidth=1;cx.restore();
+  {const rc=S&&GW('bawi').r?RCOL[GW('bawi').r]:'#d9b38a';cx.strokeStyle=rc;cx.lineWidth=3;cx.stroke();cx.fillStyle=rc;}cx.beginPath();cx.arc(0,0,5,0,7);cx.fill();cx.lineWidth=1;cx.restore();
   cx.restore()}
 function drawParty(t){
   const L=party().map(id=>({id,p:POS[id]})).sort((a,b)=>a.p[1]-b.p[1]);
@@ -481,20 +497,25 @@ function town(first){
   ]);
   showEquip();
 }
+function gearLine(id){const w=GW(id),ar=GA(id);
+  return `${MEMBERS[id].icon} <b>${MEMBERS[id].name}</b> · ${WKIND[id].k}: <span class="${RAR[w.r].c}">${w.name}</span> (${wDesc(id,w.atk)}) · 옷: <span class="${RAR[ar.r].c}">${ar.name}</span> (방어 +${ar.def}, 체력 +${ar.hp})`}
 function showEquip(){
-  info(`<b>장비</b><br>무기: <span class="${RAR[S.weapon.r].c}">${S.weapon.name}</span> (공격 +${S.weapon.atk})<br>
-  방어구: <span class="${RAR[S.armor.r].c}">${S.armor.name}</span> (방어 +${S.armor.def}, 체력 +${S.armor.hp})<br>
-  능력치: 공격 ${atk()} · 방어 ${def()} · 최대체력 ${maxHp()} <span style="color:var(--ok)">(처음보다 공격 ×${(atk()/7).toFixed(1)} · 체력 ×${(maxHp()/38).toFixed(1)})</span><br>
+  const news=S.gearNews?`<div style="color:#ffcf6e;margin-bottom:4px">✨ 이제 <b>여울·바위도 장비</b>를 낀다! 장비를 주울 때 누구에게 줄지 고르고, 대장간에서 동료 장비도 두드릴 수 있어.</div>`:'';
+  info(`${news}<b>장비</b><br>${party().map(gearLine).join('<br>')}<br>
+  능력치: 나 공격 ${atk()} · 방어 ${def()} · 체력 ${maxHp()}${party().includes('yeoul')?` / 여울 마력 ${ST.yeoul.mag()} · 체력 ${ST.yeoul.hp()}`:''}${party().includes('bawi')?` / 바위 공격 ${ST.bawi.atk()} · 방어 ${ST.bawi.def()} · 체력 ${ST.bawi.hp()}`:''} <span style="color:var(--ok)">(처음보다 공격 ×${(atk()/7).toFixed(1)} · 체력 ×${(maxHp()/38).toFixed(1)})</span><br>
   칭호: <b>${RANKS[rankOf(S.lv)].n}</b>${rankOf(S.lv)<RANKS.length-1?` <span style="color:var(--dim)">(Lv${RANKS[rankOf(S.lv)+1].lv}에 「${RANKS[rankOf(S.lv)+1].n}」)</span>`:''}<br>
   특성: ${PERKS.filter(p=>P(p.id)).map(p=>p.ic+p.n+' '+P(p.id)).join(' · ')||'<span style="color:var(--dim)">없음 (레벨업 때 고름)</span>'}<br>
   <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 한 방 ${S.stats.bestHit||0} · 만난 사건 ${S.stats.events||0}</span>`);
 }
+const wCost=w=>20+w.atk*12,aCost=a=>Math.round(20+(a.def+a.hp/4)*12);
 function forge(){
-  const wc=20+S.weapon.atk*12,ac=20+(S.armor.def+S.armor.hp/4)*12;
-  setMsg('대장장이 둥근코: "한 번 두드릴 때마다 조금씩 단단해지지."');
+  S.gearNews=false;
+  const L=party();if(!L.includes(G.fw))G.fw='hero';const id=G.fw,w=GW(id),ar=GA(id),wc=wCost(w),ac=aCost(ar);
+  setMsg(`대장장이 둥근코: "${id==='hero'?'한 번 두드릴 때마다 조금씩 단단해지지.':id==='yeoul'?'지팡이 끝의 물방울을 더 맑게 닦아 주마.':'방패는 두드릴수록 정직해진다. 바위 녀석처럼.'}"<br><b>${MEMBERS[id].icon} ${MEMBERS[id].full}</b>의 장비를 두드린다.`);
   setActs([
-    {t:'무기 +1',k:wc+'🪙',dis:S.gold<wc,f:()=>{S.gold-=wc;S.weapon.atk++;SFX.item();floatText(170,200,'공격 +1','#ffd257');save();hud();forge()}},
-    {t:'방어구 +1',k:ac+'🪙',dis:S.gold<ac,f:()=>{S.gold-=ac;S.armor.def++;S.armor.hp+=4;S.hp+=4;SFX.item();floatText(150,200,'방어 +1','#5fb4ff');save();hud();forge()}},
+    ...(L.length>1?[{t:`👤 ${MEMBERS[id].name} → ${MEMBERS[L[(L.indexOf(id)+1)%L.length]].name}`,k:'누구 장비?',f:()=>{G.fw=L[(L.indexOf(id)+1)%L.length];SFX.tick();forge()}}]:[]),
+    {t:`${WKIND[id].k} +1`,k:wc+'🪙 · '+WKIND[id].stat,dis:S.gold<wc,f:()=>{S.gold-=wc;w.atk++;SFX.item();floatText(mpos(id)[0],mpos(id)[1]-110,'🔨 '+WKIND[id].k+' +1','#ffd257',20);save();hud();forge()}},
+    {t:'방어구 +1',k:ac+'🪙 · 방어·체력',dis:S.gold<ac,f:()=>{S.gold-=ac;ar.def++;ar.hp+=4;PM(id).hp=Math.min(ST[id].hp(),(PM(id).hp||0)+4);SFX.item();floatText(mpos(id)[0],mpos(id)[1]-110,'방어 +1','#5fb4ff',20);save();hud();forge()}},
     {t:'돌아가기',f:()=>town()},
   ]);showEquip();
 }
@@ -726,7 +747,7 @@ function win(){
   else party().forEach(id=>{const m=PM(id);m.hp=Math.min(ST[id].hp(),m.hp+Math.round(ST[id].hp()*.1));m.mp=Math.min(ST[id].mp(),m.mp+1)});
   if(f%5===0)lines.push(`<b>체크포인트!</b> 다음엔 ${f+1}층부터 시작할 수 있다.`);
   const joined=checkJoin();if(joined)lines.push(joined);
-  const drop=(foes.some(e=>e.boss)||Math.random()<.3+.08*P('luck'))?makeItem(f,foes.some(e=>e.boss)):null;
+  const drop=(foes.some(e=>e.boss)||Math.random()<.3+.05*(party().length-1)+.08*P('luck'))?makeItem(f,foes.some(e=>e.boss)):null;
   save();
   setTimeout(()=>{hud();setMsg(lines.join('<br>'));const next0=()=>{setMsg(lines.join('<br>'));if(drop)offerItem(drop);else afterWin()};const jid=G.joinId;G.joinId=null;
     const next=jid?()=>{info('');joinScene(jid,next0)}:next0;if(S.pendingPerks>0)perkPick(next);else next()},T(700));
@@ -862,21 +883,30 @@ function evAltar(){
 function makeItem(f,boss){
   let r=0;const x=Math.random()+(boss?.5:0)+f*.015;
   if(x>1.35)r=3;else if(x>1.05)r=2;else if(x>.7)r=1;
-  const weapon=Math.random()<.5;const p=Math.max(1,Math.round((1+f*.55)*RAR[r].m));
-  return weapon?{slot:'weapon',name:RAR[r].n+' '+WNAMES[Math.min(WNAMES.length-1,Math.floor(f/3))],atk:p,r}
-               :{slot:'armor',name:RAR[r].n+' '+ANAMES[Math.min(ANAMES.length-1,Math.floor(f/4))],def:Math.max(0,Math.round(p*.6)),hp:p*3,r};
+  const L=party();const weapon=Math.random()<.55;const p=Math.max(1,Math.round((1+f*.55)*RAR[r].m));
+  if(weapon){const who=L[Math.floor(Math.random()*L.length)];const N=WN[who];
+    return{slot:'weapon',who,name:RAR[r].n+' '+N[Math.min(N.length-1,Math.floor(f/3))],atk:p,r}}
+  return{slot:'armor',name:RAR[r].n+' '+ANAMES[Math.min(ANAMES.length-1,Math.floor(f/4))],def:Math.max(0,Math.round(p*.6)),hp:p*3,r};
 }
+function equipTo(id,it){const g={name:it.name,atk:it.atk||0,def:it.def||0,hp:it.hp||0,r:it.r};
+  if(id==='hero')S[it.slot]=g;else S.party[id][it.slot]=g;
+  const m=PM(id);m.hp=Math.min(ST[id].hp(),m.hp==null?ST[id].hp():m.hp);
+  const p=mpos(id);floatText(p[0],p[1]-110,'장착!','#ffd257',20);burst(p[0],p[1]-50,'#ffd257',12)}
 function offerItem(it,done=afterWin){
   SFX.item();G.phase='item';
-  const cur=S[it.slot];
-  const desc=it.slot==='weapon'?`공격 +${it.atk} (지금 +${cur.atk})`:`방어 +${it.def}, 체력 +${it.hp} (지금 +${cur.def}, +${cur.hp})`;
-  const better=it.slot==='weapon'?it.atk>cur.atk:(it.def*4+it.hp)>(cur.def*4+cur.hp);
   const price=Math.round(5+(it.atk||it.def*2+it.hp/3)*2*RAR[it.r].m);
-  info(`🎁 <b>장비 발견!</b> <span class="${RAR[it.r].c}">${it.name}</span><br>${desc} ${better?'<b style="color:#7be38a">▲ 더 좋음</b>':'<span style="color:#a99fba">▼ 지금 것이 나음</span>'}`);
-  setActs([
-    {t:'장착',cls:better?'main':'',f:()=>{S[it.slot]={name:it.name,atk:it.atk||0,def:it.def||0,hp:it.hp||0,r:it.r};if(it.hp)S.hp=Math.min(maxHp(),S.hp);SFX.item();save();hud();done()}},
-    {t:`팔기 (+${price}🪙)`,cls:better?'':'main',f:()=>{S.gold+=price;save();hud();done()}},
-  ]);
+  const sell={t:`팔기 (+${price}🪙)`,f:()=>{S.gold+=price;save();hud();done()}};
+  const head=`🎁 <b>장비 발견!</b> <span class="${RAR[it.r].c}">${it.name}</span>`;
+  if(it.slot==='weapon'){
+    const id=it.who||'hero',cur=GW(id),better=it.atk>cur.atk;
+    info(`${head} <span style="color:var(--dim)">— ${MEMBERS[id].icon} ${MEMBERS[id].name} 전용 ${WKIND[id].k}</span><br>${wDesc(id,it.atk)} (지금 ${wDesc(id,cur.atk)}) ${better?'<b style="color:#7be38a">▲ 더 좋음</b>':'<span style="color:#a99fba">▼ 지금 것이 나음</span>'}`);
+    setActs([{t:`${MEMBERS[id].icon} ${MEMBERS[id].name}에게 장착`,cls:better?'main':'',f:()=>{equipTo(id,it);SFX.item();save();hud();done()}},{...sell,cls:better?'':'main'}]);
+    return;
+  }
+  // 방어구: 누구에게 줄지 고른다
+  const L=party();const gain=id=>aScore(it)-aScore(GA(id));const bestId=L.slice().sort((a,b)=>gain(b)-gain(a))[0];
+  info(`${head} <span style="color:var(--dim)">— 방어구 (누구나)</span><br>방어 +${it.def}, 체력 +${it.hp}<br>${L.map(id=>{const c=GA(id),g=gain(id);return `${MEMBERS[id].icon} ${MEMBERS[id].name}: 지금 방어 +${c.def}·체력 +${c.hp} ${g>0?'<b style="color:#7be38a">▲</b>':'<span style="color:#a99fba">▼</span>'}`}).join('<br>')}`);
+  setActs([...L.map(id=>{const g=gain(id);return{t:`${MEMBERS[id].icon} ${MEMBERS[id].name}에게`,k:g>0?'▲ 더 좋음':'▼ 지금 것이 나음',cls:(g>0&&id===bestId)?'main':'',f:()=>{equipTo(id,it);SFX.item();save();hud();done()}}}),{...sell,cls:gain(bestId)>0?'':'main'}]);
 }
 function lose(){
   if(G.phase==='done')return;G.phase='done';S.stats.deaths++;
@@ -899,7 +929,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&S)save()});
 
 // 테스트용 훅
-window.__game={floorEvent,goNext,joinScene,get curActs(){return curActs},PERKS,perkPick,get S(){return S},get G(){return G},get foes(){return foes},newSave,migrate,SAVE_KEY};
+window.__game={floorEvent,goNext,joinScene,offerItem,makeItem,forge,town,ST,get curActs(){return curActs},PERKS,perkPick,get S(){return S},get G(){return G},get foes(){return foes},newSave,migrate,SAVE_KEY};
 title();requestAnimationFrame(loop);
 </script>
 </body>
