@@ -118,10 +118,11 @@ const ST={
   bawi:{hp:()=>Math.round((44+S.lv*10+GA('bawi').hp)*vit()),mp:()=>5+S.lv,atk:()=>Math.round(3+S.lv*1.6+GW('bawi').atk*.7),def:()=>Math.round(3+S.lv*1.1+GW('bawi').atk*.4)+GA('bawi').def,spd:()=>6+S.lv*.3,mag:()=>0},
 };
 const SK={
-  hero:[{id:'fire1',ic:'🔥',n:'등불 일격',mp:4,tgt:'foe',el:'fire'},{id:'fire2',ic:'🌪️',n:'불꽃 바람',mp:7,tgt:'all',el:'fire',lv:4}],
-  yeoul:[{id:'heal',ic:'💧',n:'치유',mp:3,tgt:'ally'},{id:'water',ic:'🌊',n:'물살',mp:3,tgt:'foe'},{id:'healAll',ic:'🌿',n:'모두 치유',mp:7,tgt:'none',lv:7}],
-  bawi:[{id:'taunt',ic:'📣',n:'도발',mp:2,tgt:'none'},{id:'bash',ic:'🔨',n:'방패 강타',mp:3,tgt:'foe'}],
+  hero:[{id:'fire1',ic:'🔥',n:'등불 일격',mp:4,tgt:'foe',el:'fire'},{id:'fire2',ic:'🌪️',n:'불꽃 바람',mp:7,tgt:'all',el:'fire',lv:4},{id:'fire3',ic:'☀️',n:'등불 해방',mp:12,tgt:'foe',el:'fire',lv:11,d:'한 적에게 불 ×3.2 · 끊기 · 🔥흡수하는 적도 꿰뚫음'}],
+  yeoul:[{id:'heal',ic:'💧',n:'치유',mp:3,tgt:'ally'},{id:'water',ic:'🌊',n:'물살',mp:3,tgt:'foe'},{id:'healAll',ic:'🌿',n:'모두 치유',mp:7,tgt:'none',lv:7},{id:'revive',ic:'✨',n:'되살림의 물',mp:8,tgt:'ko',lv:13,d:'쓰러진 동료를 체력 60%로 일으킴'}],
+  bawi:[{id:'taunt',ic:'📣',n:'도발',mp:2,tgt:'none'},{id:'bash',ic:'🔨',n:'방패 강타',mp:3,tgt:'foe'},{id:'wall',ic:'🧱',n:'굳건한 벽',mp:6,tgt:'none',lv:9,d:'이번 판 파티 전원 받는 피해 ×0.55 (주문 포함)'}],
 };
+const newSkills=(from,to)=>party().flatMap(id=>SK[id].filter(s=>s.lv&&s.lv>from&&s.lv<=to).map(s=>({id,s})));
 const POS={hero:[150,H-80],yeoul:[78,H-52],bawi:[222,H-46]};
 const ANIM={hero:{dx:0,hit:0},yeoul:{dx:0,hit:0},bawi:{dx:0,hit:0}};
 const party=()=>['hero','yeoul','bawi'].filter(id=>id==='hero'||(S.party&&S.party[id]&&S.party[id].joined));
@@ -421,7 +422,7 @@ function render(t){
   cx.restore();
 }
 function drawLvCard(t){
-  const c=fx.lvCard;if(!c)return;const age=t-c.t0;if(c.t0>t)return;const dur=2600;if(age>dur){fx.lvCard=null;return}
+  const c=fx.lvCard;if(!c)return;const age=t-c.t0;if(c.t0>t)return;const dur=c.sk&&c.sk.length?3400:2600;if(age>dur){fx.lvCard=null;return}
   const a=age<200?age/200:age>dur-400?(dur-age)/400:1,pop=age<200?.8+.2*age/200:1;
   cx.save();cx.globalAlpha=a;cx.fillStyle='rgba(10,8,16,.78)';cx.fillRect(0,0,W,H);
   cx.translate(W/2,H/2);cx.scale(pop,pop);
@@ -435,6 +436,8 @@ function drawLvCard(t){
     cx.textAlign='left';cx.fillStyle='#fff';cx.fillText(c.a[k]+'  →  ',-28,y);const w=cx.measureText(c.a[k]+'  →  ').width;
     cx.font='bold 20px sans-serif';cx.fillStyle='#ffd257';cx.fillText(c.b[k],-28+w,y);const w2=cx.measureText(String(c.b[k])).width;
     const d=c.b[k]-c.a[k];if(d>0){cx.font='bold 15px sans-serif';cx.fillStyle='#7be38a';cx.fillText(' ▲'+d,-28+w+w2,y)}});
+  (c.sk||[]).forEach((o,i)=>{if(age<1000+i*250)return;const y=132+i*26;cx.textAlign='center';cx.font='bold 18px sans-serif';cx.lineWidth=5;cx.strokeStyle='#000';
+    const tx=`✦ ${MEMBERS[o.id].name} 새 기술: ${o.s.ic} ${o.s.n} ✦`;cx.strokeText(tx,0,y);cx.fillStyle='#8fe7ff';cx.fillText(tx,0,y)});
   cx.restore();
 }
 function drawTitle(t){
@@ -503,6 +506,7 @@ function showEquip(){
   const news=S.gearNews?`<div style="color:#ffcf6e;margin-bottom:4px">✨ 이제 <b>여울·바위도 장비</b>를 낀다! 장비를 주울 때 누구에게 줄지 고르고, 대장간에서 동료 장비도 두드릴 수 있어.</div>`:'';
   info(`${news}<b>장비</b><br>${party().map(gearLine).join('<br>')}<br>
   능력치: 나 공격 ${atk()} · 방어 ${def()} · 체력 ${maxHp()}${party().includes('yeoul')?` / 여울 마력 ${ST.yeoul.mag()} · 체력 ${ST.yeoul.hp()}`:''}${party().includes('bawi')?` / 바위 공격 ${ST.bawi.atk()} · 방어 ${ST.bawi.def()} · 체력 ${ST.bawi.hp()}`:''} <span style="color:var(--ok)">(처음보다 공격 ×${(atk()/7).toFixed(1)} · 체력 ×${(maxHp()/38).toFixed(1)})</span><br>
+  기술: ${party().map(id=>{const nx=SK[id].find(s=>s.lv&&s.lv>S.lv);return `${MEMBERS[id].icon}${SK[id].filter(s=>S.lv>=(s.lv||1)).map(s=>s.ic).join('')}`+(nx?` <span style="color:var(--dim)">(Lv${nx.lv} ${nx.ic}${nx.n})</span>`:'')}).join(' · ')}<br>
   칭호: <b>${RANKS[rankOf(S.lv)].n}</b>${rankOf(S.lv)<RANKS.length-1?` <span style="color:var(--dim)">(Lv${RANKS[rankOf(S.lv)+1].lv}에 「${RANKS[rankOf(S.lv)+1].n}」)</span>`:''}<br>
   특성: ${PERKS.filter(p=>P(p.id)).map(p=>p.ic+p.n+' '+P(p.id)).join(' · ')||'<span style="color:var(--dim)">없음 (레벨업 때 고름)</span>'}<br>
   <span style="color:var(--dim)">기록: ${S.stats.wins}승 · 쓰러짐 ${S.stats.deaths} · 퍼펙트 ${S.stats.perfects} · 최고 한 방 ${S.stats.bestHit||0} · 만난 사건 ${S.stats.events||0}</span>`);
@@ -565,7 +569,7 @@ function nextFloor(){
 }
 function roundStart(){
   if(G.mode!=='battle'||G.phase==='done')return;
-  G.round++;G.cmds={};G.st={};party().forEach(id=>G.st[id]={});
+  G.round++;G.cmds={};G.st={};G.wall=false;G.fresh={};party().forEach(id=>G.st[id]={});
   G.silenced=!!G.silenceNext;G.silenceNext=false;
   liveFoes().forEach(e=>{e.acted=false;e.burnt=false;e.intent=e.ai[(e.aiI++)%e.ai.length]});
   const sp=P('combo')*2;
@@ -585,15 +589,18 @@ function askCmd(){
   const usedPot=Object.values(G.cmds).filter(c=>c.a==='pot').length,potLeft=S.potions-usedPot;
   const acts=[{t:'⚔️ 공격',cls:'main',f:()=>pickFoe(t=>setCmd({a:'atk',t}))}];
   SK[id].filter(s=>S.lv>=(s.lv||1)).forEach(s=>{
-    const tag=G.silenced?' 🤐':s.el==='fire'&&liveFoes().some(e=>e.fireEat)?' ⚠️':'';
-    acts.push({t:s.ic+' '+s.n+tag,k:G.silenced?'봉인됨':'MP '+s.mp,dis:G.silenced||m.mp<s.mp,f:()=>s.tgt==='foe'?pickFoe(t=>setCmd({a:s.id,t})):s.tgt==='ally'?pickAlly(t=>setCmd({a:s.id,t}),false):setCmd({a:s.id})})});
+    const tag=G.silenced?' 🤐':s.tgt==='ko'&&!koFree().length?' (쓰러진 동료 없음)':s.el==='fire'&&s.id!=='fire3'&&liveFoes().some(e=>e.fireEat)?' ⚠️':'';
+    acts.push({t:s.ic+' '+s.n+tag,k:G.silenced?'봉인됨':'MP '+s.mp,dis:G.silenced||m.mp<s.mp||(s.tgt==='ko'&&!koFree().length),f:()=>s.tgt==='foe'?pickFoe(t=>setCmd({a:s.id,t})):s.tgt==='ally'?pickAlly(t=>setCmd({a:s.id,t}),false):s.tgt==='ko'?pickKO(t=>setCmd({a:s.id,t})):setCmd({a:s.id})})});
   acts.push({t:'🛡️ 방어',k:'피해 ½ · MP+2',f:()=>setCmd({a:'guard'})});
   acts.push({t:'🧪 회복약',k:potLeft+'개',dis:potLeft<1,f:()=>pickAlly(t=>setCmd({a:'pot',t}),true)});
   if(G.inputIdx>0)acts.push({t:'↩️ 뒤로',f:()=>{G.inputIdx--;delete G.cmds[G.inputList[G.inputIdx]];askCmd()}});
   else acts.push({t:'⚡ 모두 공격',k:'빠르게',f:()=>{alive().forEach(i=>G.cmds[i]={a:'atk',t:null});execRound()}});
   acts.forEach((a,i)=>a.k=(i+1)+(a.k?' · '+a.k:''));
   setActs(acts);
-  setMsg((G.introMsg?G.introMsg+'<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">':'')+foeLines()+(G.silenced?'<br><b style="color:#e0a0ff">🤐 침묵의 장 — 이번 판은 기술을 쓸 수 없다! (공격·방어·회복약만)</b>':'')+'<br>'+orderLine()+`<br>▶ <b style="color:#ffe2a8">${MEMBERS[id].icon} ${MEMBERS[id].name}</b>의 행동은?`);
+  const fresh=SK[id].filter(s=>s.d&&S.lv>=s.lv&&!(S.seenSk||[]).includes(s.id));
+  if(fresh.length){S.seenSk=[...(S.seenSk||[]),...fresh.map(s=>s.id)]}
+  G.fresh=G.fresh||{};if(fresh.length)G.fresh[id]=fresh.map(s=>`<b style="color:#8fe7ff">✨ 새 기술 ${s.ic} ${s.n}</b> <span style="color:var(--dim);font-size:12px">— ${s.d} (MP ${s.mp})</span><br>`).join('');const freshMsg=G.fresh[id]||'';
+  setMsg(freshMsg+(G.introMsg?G.introMsg+'<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">':'')+foeLines()+(G.silenced?'<br><b style="color:#e0a0ff">🤐 침묵의 장 — 이번 판은 기술을 쓸 수 없다! (공격·방어·회복약만)</b>':'')+'<br>'+orderLine()+`<br>▶ <b style="color:#ffe2a8">${MEMBERS[id].icon} ${MEMBERS[id].name}</b>의 행동은?`);
 }
 function pickFoe(cb){
   const L=liveFoes();if(L.length===1)return cb(L[0]);
@@ -607,12 +614,19 @@ function pickAlly(cb,allowKO){
   setActs([...L.map((id,i)=>({t:`${MEMBERS[id].icon} ${MEMBERS[id].name}`,k:`${i+1} · `+(PM(id).hp>0?`HP ${Math.ceil(PM(id).hp)}/${ST[id].hp()}`:'쓰러짐'),f:()=>cb(id)})),{t:'↩️ 뒤로',k:(L.length+1)+'',f:()=>askCmd()}]);
   setMsg('▶ <b>누구에게?</b>');
 }
+// 쓰러졌고, 이번 판 다른 명령이 아직 일으키기로 정하지 않은 동료
+const koFree=()=>party().filter(id=>PM(id).hp<=0&&!Object.values(G.cmds).some(c=>(c.a==='revive'||c.a==='pot')&&c.t===id));
+function pickKO(cb){const L=koFree();if(L.length===1)return cb(L[0]);
+  G.phase='target';G.pickCb=null;
+  setActs([...L.map((id,i)=>({t:`${MEMBERS[id].icon} ${MEMBERS[id].name}`,k:`${i+1} · 쓰러짐`,f:()=>cb(id)})),{t:'↩️ 뒤로',k:(L.length+1)+'',f:()=>askCmd()}]);
+  setMsg('▶ <b>누구를 일으킬까?</b>')}
 function setCmd(c){G.cmds[G.cur]=c;G.inputIdx++;askCmd()}
 function execRound(){
   G.phase='act';G.introMsg='';setActs([]);
   // 방어·도발은 판이 시작되자마자 효과
   for(const id of alive()){const c=G.cmds[id]||{a:'atk'};if(c.a==='guard')G.st[id].guard=true;
-    if(c.a==='taunt'&&PM(id).mp>=2){PM(id).mp-=2;G.st[id].taunt=true;c.paid=1}}
+    if(c.a==='taunt'&&PM(id).mp>=2){PM(id).mp-=2;G.st[id].taunt=true;c.paid=1}
+    if(c.a==='wall'&&!G.silenced&&PM(id).mp>=6){PM(id).mp-=6;c.paid=1;G.wall=true}}
   hud();G.queue=G.order.slice();step();
 }
 function step(){
@@ -637,6 +651,12 @@ function memberAct(id,c){
     case 'atk':{const t=retarget(c.t);A.dx=36;say(`${nm}의 공격!`);hit(id,t,1,'phys');return 650}
     case 'fire1':{const t=retarget(c.t);A.dx=36;SFX.fire();say(`${nm}의 🔥 등불 일격!`);hit(id,t,1.8*(1+.15*P('wick')),'fire',{interrupt:1});return 750}
     case 'fire2':{A.dx=24;SFX.fire();say(`${nm}의 🌪️ 불꽃 바람!`);liveFoes().forEach(t=>hit(id,t,.9*(1+.15*P('wick')),'fire'));return 850}
+    case 'fire3':{const t=retarget(c.t);A.dx=44;SFX.fire();setTimeout(()=>SFX.fire(),120);fx.flash=.35;say(`${nm}의 ☀️ 등불 해방!`);burst(t.x,t.y-60,'#ffe9a8',30);hit(id,t,3.2*(1+.15*P('wick')),'fire',{interrupt:1,pierce:1});return 950}
+    case 'wall':{const p=mpos(id);floatText(p[0],p[1]-110,'🧱 굳건한 벽','#d9b38a',20);SFX.guard();burst(150,H-110,'#d9b38a',20);say(`${nm}: "내 뒤로!" 🧱 굳건한 벽 — 이번 판 받는 피해가 크게 줄어든다`);return 600}
+    case 'revive':{let t=c.t;if(!t||PM(t).hp>0)t=party().find(x=>PM(x).hp<=0);
+      if(!t){healM(alive().sort((a,b)=>PM(a).hp/ST[a].hp()-PM(b).hp/ST[b].hp())[0],Math.round(ST[id].mag()*2));say(`${nm}의 ✨ 되살림의 물 — 쓰러진 사람이 없어 치유로 바뀌었다`);return 650}
+      PM(t).hp=Math.round(ST[t].hp()*.6);const p=mpos(t);floatText(p[0],p[1]-100,'✨ 되살아났다!','#bff5ff',22);burst(p[0],p[1]-40,'#bff5ff',24);SFX.heal();setTimeout(()=>SFX.lv(),150);
+      say(`${nm}의 ✨ 되살림의 물 → ${MEMBERS[t].name}이(가) 다시 일어섰다!`);return 800}
     case 'water':{const t=retarget(c.t);A.dx=18;beep(700,.25,'sine',.06,.5);say(`${nm}의 🌊 물살!`);hit(id,t,1.5,'water');return 700}
     case 'bash':{const t=retarget(c.t);A.dx=40;say(`${nm}의 🔨 방패 강타!`);hit(id,t,1.1,'phys',{interrupt:1,stun:.4});return 750}
     case 'heal':{const t=PM(c.t).hp>0?c.t:alive().sort((a,b)=>PM(a).hp/ST[a].hp()-PM(b).hp/ST[b].hp())[0];healM(t,Math.round(ST[id].mag()*2+ST[t].hp()*.12));say(`${nm}의 💧 치유 → ${MEMBERS[t].name}`);return 650}
@@ -660,12 +680,12 @@ function hit(id,t,mult,el,opt={}){
   if(el!=='water'&&id!=='yeoul'&&Math.random()<.08+.07*P('eye')){crit=true;dmg*=1.7}
   if(id==='hero'&&G.ember&&el!=='water'){dmg*=1.5;G.ember=0;fl('불씨!','#ff9a3c',20,40)}
   if(el==='fire'){
-    if(t.fireEat){const h=Math.max(1,Math.round(dmg*.5));t.hp=Math.min(t.maxHp,t.hp+h);fl('불꽃을 삼켰다! +'+h,'#7fd1ff',18);burst(t.x,t.y-60,'#7fd1ff',10);return}
+    if(t.fireEat&&!opt.pierce){const h=Math.max(1,Math.round(dmg*.5));t.hp=Math.min(t.maxHp,t.hp+h);fl('불꽃을 삼켰다! +'+h,'#7fd1ff',18);burst(t.x,t.y-60,'#7fd1ff',10);return}
     if(t.weak==='fire'){dmg*=1.5;fl('🔥약점!','#ff9a3c',18,30)}
     if(t.intent==='hide'){t.lit=true;dmg*=1.3;fl('비췄다!','#ffe9a8',18,52)}
   }
   if(el==='water'&&t.weak==='water'){dmg*=1.8;fl('💧약점!','#7fd1ff',18,30)}
-  if(t.intent==='shield'&&el==='phys'){dmg*=.25;fl('🛡️ 막혔다','#d9b38a',16,30)}
+  if(t.intent==='shield'&&el==='phys'&&!opt.pierce){dmg*=.25;fl('🛡️ 막혔다','#d9b38a',16,30)}
   if(t.shell&&!t.cracked){if(el==='fire'||crit)crackShell(t);else dmg*=.5}
   if(t.intent==='cocoon'&&!t.acted){if(el==='fire'){if(!t.burnt){t.burnt=true;fl('고치가 탄다!','#ff9a3c',18,52)}dmg*=1.3}else if(!t.burnt){dmg*=.3;fl('🐛 고치에 막힘','#e8e0c8',16,30)}}
   dmg=Math.max(1,Math.round(dmg));
@@ -697,7 +717,7 @@ function pickTarget(e){
 function foeHit(e,id,mult,magic){
   const m=PM(id);if(m.hp<=0)return;const st=G.st[id]||{};
   let dmg=(e.atk*mult*(1+(Math.random()*.3-.15))-ST[id].def()*(magic?.3:.5))*(1-.06*P('skin'));
-  if(st.guard)dmg*=Math.max(.25,.5-.1*P('guard'));if(st.taunt)dmg*=.6;
+  if(st.guard)dmg*=Math.max(.25,.5-.1*P('guard'));if(st.taunt)dmg*=.6;if(G.wall)dmg*=.55;
   dmg=Math.max(1,Math.round(dmg));m.hp=Math.max(0,m.hp-dmg);
   const p=mpos(id);ANIM[id].hit=350;fx.shake=Math.max(fx.shake,mult>1.5?14:8);SFX.hurt();
   floatText(p[0],p[1]-80,'-'+dmg,magic?'#c49bff':'#ff5d6c',28);if(st.guard)floatText(p[0],p[1]-112,'방어!','#5fb4ff',16);
@@ -818,7 +838,7 @@ function levelCheck(){ // 경험치로 레벨업 처리, 오른 레벨 수 반�
   const a=statSnap(),from=S.lv,r0=rankOf(S.lv);
   let ups=0;while(S.exp>=needExp(S.lv)){S.exp-=needExp(S.lv);S.lv++;ups++}
   S.pendingPerks=(S.pendingPerks||0)+ups;
-  if(ups){restoreAll();const r1=rankOf(S.lv);fx.lvCard={t0:performance.now()+500,from,to:S.lv,a,b:statSnap(),rank:r1>r0?RANKS[r1].n:null};setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500)}
+  if(ups){restoreAll();const r1=rankOf(S.lv);fx.lvCard={t0:performance.now()+500,from,to:S.lv,a,b:statSnap(),rank:r1>r0?RANKS[r1].n:null,sk:newSkills(from,S.lv)};setTimeout(()=>{SFX.lv();floatText(150,120,'LEVEL UP!','#ffd257',34);burst(150,250,'#ffd257',30);fx.flash=.4},500)}
   return ups;
 }
 // ================= 층 사이 이벤트 =================
